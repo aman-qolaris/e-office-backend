@@ -1,6 +1,7 @@
 import "dotenv/config"; // Automatically loads .env
 import app from "./src/app.js"; // Note the .js extension is mandatory in ESM
 import { sequelize } from "./src/database/models/index.js"; // Will enable later
+import { initMinio } from "./src/config/minio.js";
 
 const PORT = process.env.PORT || 4000;
 
@@ -17,6 +18,8 @@ const startServer = async () => {
     // alter: true means "update table structure if model changes"
     await sequelize.sync({ alter: true });
     console.log("✅ Database Models Synced.");
+
+    await initMinio();
 
     app.listen(PORT, () => {
       console.log(`
