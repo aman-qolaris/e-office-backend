@@ -2,11 +2,13 @@ import {
   sequelize,
   FileMaster,
   FileMovement,
+  User,
 } from "../../../database/models/index.js";
 import {
   MOVEMENT_ACTIONS,
   ROLES,
   FILE_STATUS,
+  DESIGNATIONS,
 } from "../../../config/constants.js";
 import AppError from "../../../utils/AppError.js";
 
@@ -27,6 +29,32 @@ class WorkflowService {
           "You do not have permission to move this file. You are not the current holder.",
           403,
         );
+      }
+
+      // --- NEW: FETCH RECEIVER DETAILS ---
+      const receiver = await User.findByPk(moveData.receiverId);
+      if (!receiver) {
+        throw new AppError("Receiver not found", 404);
+      }
+
+      // --- NEW: HIERARCHY RULE 1 (Staff cannot skip to President) ---
+      if (currentUser.system_role === ROLES.STAFF) {
+        if (receiver.designation === DESIGNATIONS.PRESIDENT) {
+          throw new AppError(
+            "Hierarchy Violation: Staff members cannot send files directly to the President. Please route through a Board Member.",
+            403,
+          );
+        }
+      }
+
+      // --- NEW: HIERARCHY RULE 2 (Cannot send to self) ---
+      if (
+        currentUser.id === receiver.id &&
+        moveData.action === MOVEMENT_ACTIONS.FORWARD
+      ) {
+        // Note: We allow sending to self if it's 'APPROVE' (sometimes acts as a self-close),
+        // but typically FORWARD to self is useless.
+        throw new AppError("You cannot forward a file to yourself.", 400);
       }
 
       // 3. Role Validation Check
