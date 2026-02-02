@@ -63,6 +63,21 @@ class FileController {
       next(error);
     }
   }
+
+  async getFileHistory(req, res, next) {
+    try {
+      const { id } = req.params; // Get file ID from URL
+      const history = await FileService.getFileHistory(id);
+
+      res.status(200).json({
+        success: true,
+        message: "File history fetched successfully",
+        data: history,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default new FileController();
