@@ -10,6 +10,7 @@ router.use(protect);
 
 router.get("/inbox", FileController.getInbox);
 router.get("/outbox", FileController.getOutbox);
+router.get("/:id/history", FileController.getFileHistory);
 
 // POST /api/v1/files
 router.post("/", upload.single("puc"), FileController.createFile);

@@ -1,6 +1,7 @@
 import path from "path";
 import {
   FileMaster,
+  FileMovement,
   User,
   Department,
 } from "../../../database/models/index.js"; // Import Department
@@ -129,6 +130,59 @@ class FileService {
     });
 
     return files.map((file) => new FileResponseDto(file));
+  }
+
+  async getFileHistory(fileId) {
+    // 1. Fetch File Details
+    const file = await FileMaster.findByPk(fileId, {
+      include: [
+        { model: Department, as: "department", attributes: ["name"] },
+        { model: User, as: "creator", attributes: ["full_name"] },
+        {
+          model: User,
+          as: "currentHolder",
+          attributes: ["full_name", "designation"],
+        },
+      ],
+    });
+
+    if (!file) {
+      throw new AppError("File not found", 404);
+    }
+
+    // 2. Fetch Movements (The Audit Trail)
+    const movements = await FileMovement.findAll({
+      where: { file_id: fileId },
+      include: [
+        {
+          model: User,
+          as: "sender",
+          attributes: ["full_name", "designation"],
+        },
+        {
+          model: User,
+          as: "receiver",
+          attributes: ["full_name", "designation"],
+        },
+      ],
+      order: [["createdAt", "ASC"]], // Oldest first (Chronological order)
+    });
+
+    // 3. Return Combined Data
+    // We will format the movements nicely here or in a DTO
+    return {
+      file: new FileResponseDto(file),
+      history: movements.map((move) => ({
+        id: move.id,
+        action: move.action,
+        remarks: move.remarks,
+        from: move.sender.full_name,
+        to: move.receiver.full_name,
+        date: new Date(move.createdAt).toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+        }),
+      })),
+    };
   }
 }
 
