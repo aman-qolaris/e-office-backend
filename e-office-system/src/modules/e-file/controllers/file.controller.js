@@ -33,6 +33,36 @@ class FileController {
       next(error);
     }
   }
+
+  async getInbox(req, res, next) {
+    try {
+      // "req.user.id" comes from the 'protect' middleware (the token)
+      const files = await FileService.getInbox(req.user.id);
+
+      res.status(200).json({
+        success: true,
+        message: "Inbox fetched successfully",
+        count: files.length,
+        data: files,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getOutbox(req, res, next) {
+    try {
+      const files = await FileService.getOutbox(req.user.id);
+      res.status(200).json({
+        success: true,
+        message: "Outbox fetched successfully",
+        count: files.length,
+        data: files,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default new FileController();

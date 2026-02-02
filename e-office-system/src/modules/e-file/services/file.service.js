@@ -1,9 +1,14 @@
 import path from "path";
-import { FileMaster, Department } from "../../../database/models/index.js"; // Import Department
+import {
+  FileMaster,
+  User,
+  Department,
+} from "../../../database/models/index.js"; // Import Department
 import { FILE_STATUS } from "../../../config/constants.js";
 import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import AppError from "../../../utils/AppError.js";
 import FileResponseDto from "../dtos/response/FileResponseDto.js"; // Import DTO
+import { Op } from "sequelize";
 
 class FileService {
   async createFile(fileData, user, fileBuffer, originalName, mimeType) {
@@ -66,6 +71,64 @@ class FileService {
     // We reload to get the Department name for the response
     await newFile.reload({ include: ["department", "creator"] });
     return new FileResponseDto(newFile);
+  }
+
+  async getInbox(userId) {
+    // Fetch files where I am the current holder
+    const files = await FileMaster.findAll({
+      where: {
+        current_holder_id: userId,
+        // Optional: Filter out 'ARCHIVED' or 'CLOSED' if you want
+      },
+      include: [
+        {
+          model: User,
+          as: "creator",
+          attributes: ["full_name", "designation"], // Who started this?
+        },
+        {
+          model: Department,
+          as: "department",
+          attributes: ["name"], // Which dept?
+        },
+      ],
+      order: [["updatedAt", "DESC"]], // Newest on top
+    });
+
+    // Convert to DTOs (to format Dates to IST)
+    return files.map((file) => new FileResponseDto(file));
+  }
+
+  async getOutbox(userId) {
+    // Logic: Files I created OR files I worked on, BUT I don't hold them right now.
+    // For V1, let's keep it simple: "Files I Created" that are NOT with me.
+
+    const files = await FileMaster.findAll({
+      where: {
+        created_by: userId,
+        current_holder_id: { [Op.ne]: userId }, // Op.ne means "Not Equal"
+      },
+      include: [
+        {
+          model: User,
+          as: "currentHolder", // So I can see "Oh, Suresh has it now"
+          attributes: ["full_name", "designation"],
+        },
+        {
+          model: Department,
+          as: "department",
+          attributes: ["name"],
+        },
+        {
+          model: User,
+          as: "creator",
+          attributes: ["full_name"],
+        },
+      ],
+      order: [["updatedAt", "DESC"]],
+    });
+
+    return files.map((file) => new FileResponseDto(file));
   }
 }
 
