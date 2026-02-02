@@ -78,6 +78,22 @@ class FileController {
       next(error);
     }
   }
+
+  async searchFiles(req, res, next) {
+    try {
+      // Pass the entire query object (text, status, priority, etc.) to the service
+      const files = await FileService.searchFiles(req.query);
+
+      res.status(200).json({
+        success: true,
+        message: "Files searched successfully",
+        count: files.length,
+        data: files,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default new FileController();
