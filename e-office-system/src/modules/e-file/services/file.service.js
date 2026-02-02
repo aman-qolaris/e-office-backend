@@ -184,6 +184,52 @@ class FileService {
       })),
     };
   }
+
+  async searchFiles(queryFilters) {
+    // 1. Initialize the WHERE clause
+    const whereClause = {};
+
+    // 2. Text Search (Subject OR File Number)
+    if (queryFilters.text) {
+      whereClause[Op.or] = [
+        { subject: { [Op.like]: `%${queryFilters.text}%` } }, // Contains text
+        { file_number: { [Op.like]: `%${queryFilters.text}%` } }, // Contains text
+      ];
+    }
+
+    // 3. Exact Filters
+    if (queryFilters.status) {
+      whereClause.status = queryFilters.status;
+    }
+
+    if (queryFilters.priority) {
+      whereClause.priority = queryFilters.priority;
+    }
+
+    if (queryFilters.departmentId) {
+      whereClause.department_id = queryFilters.departmentId;
+    }
+
+    // 4. Execute Query
+    const files = await FileMaster.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: User,
+          as: "currentHolder",
+          attributes: ["full_name", "designation"],
+        },
+        {
+          model: Department,
+          as: "department",
+          attributes: ["name"],
+        },
+      ],
+      order: [["updatedAt", "DESC"]], // Newest first
+    });
+
+    return files.map((file) => new FileResponseDto(file));
+  }
 }
 
 export default new FileService();

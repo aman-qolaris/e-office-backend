@@ -10,6 +10,7 @@ router.use(protect);
 
 router.get("/inbox", FileController.getInbox);
 router.get("/outbox", FileController.getOutbox);
+router.get("/search", FileController.searchFiles);
 router.get("/:id/history", FileController.getFileHistory);
 
 // POST /api/v1/files
