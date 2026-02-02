@@ -2,6 +2,7 @@ import sequelize from "../../config/database.js";
 import Department from "./Department.js";
 import User from "./User.js";
 import FileMaster from "./FileMaster.js";
+import FileMovement from "./FileMovement.js";
 
 // Define Associations
 // 1. User & Department
@@ -26,5 +27,17 @@ FileMaster.belongsTo(Department, {
   as: "department",
 });
 
+// 1. File has many movements (History)
+FileMaster.hasMany(FileMovement, { foreignKey: "file_id", as: "movements" });
+FileMovement.belongsTo(FileMaster, { foreignKey: "file_id", as: "file" });
+
+// 2. Movement has a Sender (User)
+User.hasMany(FileMovement, { foreignKey: "sent_by" });
+FileMovement.belongsTo(User, { foreignKey: "sent_by", as: "sender" });
+
+// 3. Movement has a Receiver (User)
+User.hasMany(FileMovement, { foreignKey: "sent_to" });
+FileMovement.belongsTo(User, { foreignKey: "sent_to", as: "receiver" });
+
 // Export everything together
-export { sequelize, Department, User, FileMaster };
+export { sequelize, Department, User, FileMaster, FileMovement };
