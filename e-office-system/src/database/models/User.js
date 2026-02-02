@@ -11,8 +11,8 @@ class User extends Model {
 
   // 2. Helper to check PIN during File Approval
   async validatePin(pin) {
-    if (!this.transaction_pin) return false;
-    return await bcrypt.compare(pin, this.transaction_pin);
+    if (!this.security_pin) return false;
+    return await bcrypt.compare(pin, this.security_pin);
   }
 }
 
@@ -77,7 +77,7 @@ User.init(
     // --- SECURITY ---
 
     // Hashed PIN for "Digital Signature" approvals
-    transaction_pin: {
+    security_pin: {
       type: DataTypes.STRING,
       allowNull: true,
     },
@@ -98,16 +98,16 @@ User.init(
         if (user.password) {
           user.password = await bcrypt.hash(user.password, 10);
         }
-        if (user.transaction_pin) {
-          user.transaction_pin = await bcrypt.hash(user.transaction_pin, 10);
+        if (user.security_pin) {
+          user.security_pin = await bcrypt.hash(user.security_pin, 10);
         }
       },
       beforeUpdate: async (user) => {
         if (user.changed("password")) {
           user.password = await bcrypt.hash(user.password, 10);
         }
-        if (user.changed("transaction_pin")) {
-          user.transaction_pin = await bcrypt.hash(user.transaction_pin, 10);
+        if (user.changed("security_pin")) {
+          user.security_pin = await bcrypt.hash(user.security_pin, 10);
         }
       },
     },

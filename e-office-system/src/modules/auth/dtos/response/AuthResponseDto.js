@@ -8,6 +8,7 @@ class AuthResponseDto {
       systemRole: user.system_role, // ADMIN, STAFF, BOARD_MEMBER
       designation: user.designation, // SYSTEM_ADMIN, PRESIDENT, etc.
       department: user.department ? user.department.name : null,
+      isPinSet: !!user.security_pin,
     };
   }
 }

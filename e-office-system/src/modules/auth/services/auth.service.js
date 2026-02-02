@@ -32,6 +32,25 @@ class AuthService {
     return new AuthResponseDto(user, token);
   }
 
+  async setPin(userId, pin) {
+    // 1. Validation: Must be exactly 4 digits
+    // The Validator middleware usually catches this, but this is a safety net
+    if (!/^\d{4}$/.test(pin)) {
+      throw new AppError("PIN must be exactly 4 digits", 400);
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+
+    // 2. Save PIN (The Model Hook will auto-hash this!)
+    user.security_pin = pin;
+    await user.save();
+
+    return { message: "Security PIN set successfully" };
+  }
+
   generateToken(user) {
     return jwt.sign(
       {
