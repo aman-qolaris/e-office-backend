@@ -22,6 +22,26 @@ class AuthController {
       next(error);
     }
   }
+
+  async setPin(req, res, next) {
+    try {
+      const userId = req.user.id; // Comes from 'protect' middleware
+      const { pin } = req.body;
+
+      if (!pin) {
+        throw new AppError("PIN is required", 400);
+      }
+
+      const result = await AuthService.setPin(userId, pin);
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default new AuthController();

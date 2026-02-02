@@ -72,6 +72,27 @@ class WorkflowService {
         }
       }
 
+      // --- NEW: SECURITY PIN CHECK ---
+      // We only demand a PIN for high-security actions (Approve/Reject)
+      const sensitiveActions = [
+        MOVEMENT_ACTIONS.APPROVE,
+        MOVEMENT_ACTIONS.REJECT,
+      ];
+
+      if (sensitiveActions.includes(moveData.action)) {
+        // A. Check if PIN was sent in the request body
+        if (!moveData.pin) {
+          throw new AppError("Security PIN is required for this action.", 400);
+        }
+
+        // B. Verify the PIN using the User Model method we created
+        const isPinValid = await currentUser.validatePin(moveData.pin);
+
+        if (!isPinValid) {
+          throw new AppError("Invalid Security PIN.", 401);
+        }
+      }
+
       // --- NEW: AUTO-UPDATE STATUS ---
       let newStatus = file.status;
 
