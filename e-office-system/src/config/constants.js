@@ -38,3 +38,10 @@ export const FILE_TYPES = {
   FINANCIAL: "FINANCIAL",
   POLICY: "POLICY",
 };
+
+export const MOVEMENT_ACTIONS = {
+  FORWARD: "FORWARD", // Standard move
+  REVERT: "REVERT", // Send back for correction
+  APPROVE: "APPROVE", // Final approval
+  REJECT: "REJECT", // Final rejection
+};
