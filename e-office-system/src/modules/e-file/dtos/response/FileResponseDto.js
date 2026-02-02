@@ -30,6 +30,9 @@ class FileResponseDto {
 
     this.createdAt = new Date(file.createdAt).toLocaleString("en-IN", options);
     this.updatedAt = new Date(file.updatedAt).toLocaleString("en-IN", options);
+    this.currentHolder = file.currentHolder
+      ? file.currentHolder.full_name
+      : file.current_holder_id;
   }
 }
 

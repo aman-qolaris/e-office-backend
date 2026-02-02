@@ -8,11 +8,10 @@ const router = Router();
 // Apply Global Protection (Must be logged in)
 router.use(protect);
 
+router.get("/inbox", FileController.getInbox);
+router.get("/outbox", FileController.getOutbox);
+
 // POST /api/v1/files
-// Middleware Order:
-// 1. protect (Check Token)
-// 2. upload.single('puc') (Handle File Upload)
-// 3. Controller (Logic)
 router.post("/", upload.single("puc"), FileController.createFile);
 
 export default router;
