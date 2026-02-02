@@ -3,7 +3,11 @@ import {
   FileMaster,
   FileMovement,
 } from "../../../database/models/index.js";
-import { MOVEMENT_ACTIONS, ROLES } from "../../../config/constants.js";
+import {
+  MOVEMENT_ACTIONS,
+  ROLES,
+  FILE_STATUS,
+} from "../../../config/constants.js";
 import AppError from "../../../utils/AppError.js";
 
 class WorkflowService {
@@ -40,11 +44,34 @@ class WorkflowService {
         }
       }
 
+      // --- NEW: AUTO-UPDATE STATUS ---
+      let newStatus = file.status;
+
+      switch (moveData.action) {
+        case MOVEMENT_ACTIONS.APPROVE:
+          newStatus = FILE_STATUS.APPROVED;
+          break;
+        case MOVEMENT_ACTIONS.REJECT:
+          newStatus = FILE_STATUS.REJECTED;
+          break;
+        case MOVEMENT_ACTIONS.REVERT:
+          newStatus = FILE_STATUS.REVERTED;
+          break;
+        case MOVEMENT_ACTIONS.FORWARD:
+          // If it was DRAFT, now it is IN_PROGRESS
+          if (file.status === FILE_STATUS.DRAFT) {
+            newStatus = FILE_STATUS.IN_PROGRESS;
+          }
+          // If it was REVERTED, and we fix & forward, it becomes IN_PROGRESS again
+          if (file.status === FILE_STATUS.REVERTED) {
+            newStatus = FILE_STATUS.IN_PROGRESS;
+          }
+          break;
+      }
+
       // 4. Update Current Holder
       file.current_holder_id = moveData.receiverId;
-
-      // Note: If you want to update status based on action (e.g. APPROVE -> APPROVED),
-      // add that logic here later. For now, we just move it.
+      file.status = newStatus;
 
       await file.save({ transaction });
 
