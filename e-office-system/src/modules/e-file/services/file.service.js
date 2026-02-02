@@ -230,6 +230,41 @@ class FileService {
 
     return files.map((file) => new FileResponseDto(file));
   }
+
+  async getDashboardStats(userId) {
+    // 1. Count Pending (Inbox)
+    const pendingCount = await FileMaster.count({
+      where: { current_holder_id: userId },
+    });
+
+    // 2. Count Created (Total I started)
+    const createdCount = await FileMaster.count({
+      where: { created_by: userId },
+    });
+
+    // 3. Count Approved (My success rate)
+    const approvedCount = await FileMaster.count({
+      where: {
+        created_by: userId,
+        status: FILE_STATUS.APPROVED,
+      },
+    });
+
+    // 4. Count Rejected
+    const rejectedCount = await FileMaster.count({
+      where: {
+        created_by: userId,
+        status: FILE_STATUS.REJECTED,
+      },
+    });
+
+    return {
+      pending: pendingCount,
+      created: createdCount,
+      approved: approvedCount,
+      rejected: rejectedCount,
+    };
+  }
 }
 
 export default new FileService();
