@@ -1,6 +1,8 @@
 import { Router } from "express";
 import WorkflowController from "../controllers/workflow.controller.js";
 import { protect } from "../../../middlewares/auth.middleware.js";
+import { restrictTo } from "../../../middlewares/rbac.middleware.js";
+import { ROLES } from "../../../config/constants.js";
 
 const router = Router();
 
@@ -80,6 +82,10 @@ router.use(protect);
  */
 
 // POST /api/v1/workflow/files/:id/move
-router.post("/files/:id/move", WorkflowController.moveFile);
+router.post(
+  "/files/:id/move",
+  restrictTo(ROLES.STAFF, ROLES.BOARD_MEMBER),
+  WorkflowController.moveFile,
+);
 
 export default router;

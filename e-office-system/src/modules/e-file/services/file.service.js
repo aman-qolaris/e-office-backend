@@ -7,7 +7,7 @@ import {
   User,
   Department,
 } from "../../../database/models/index.js"; // Import Department
-import { FILE_STATUS } from "../../../config/constants.js";
+import { FILE_STATUS, ROLES } from "../../../config/constants.js";
 import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import AppError from "../../../utils/AppError.js";
 import FileResponseDto from "../dtos/response/FileResponseDto.js"; // Import DTO
@@ -15,6 +15,10 @@ import { Op } from "sequelize";
 
 class FileService {
   async createFile(fileData, user, pucFile, attachments) {
+    if (user?.system_role === ROLES.ADMIN) {
+      throw new AppError("Admins are not allowed to create files.", 403);
+    }
+
     const transaction = await sequelize.transaction(); // START TRANSACTION
 
     try {

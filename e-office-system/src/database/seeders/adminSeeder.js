@@ -23,7 +23,7 @@ const seedAdmin = async () => {
     const adminData = {
       full_name: "System Administrator",
       phone_number: "9876543210", // Valid 10-digit Indian number
-      password: "admin@123", // Will be hashed automatically
+      password: "Admin@123", // Will be hashed automatically
       system_role: ROLES.ADMIN,
       designation: DESIGNATIONS.SYSTEM_ADMIN, // Or specific Admin title
       is_active: true,
