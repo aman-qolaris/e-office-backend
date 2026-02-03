@@ -1,5 +1,6 @@
 import Joi from "joi";
 import { ROLES, DESIGNATIONS } from "../../../../config/constants.js";
+import AppError from "../../../../utils/AppError.js";
 
 class CreateUserRequestDto {
   constructor(data) {
@@ -44,6 +45,16 @@ class CreateUserRequestDto {
     departmentId: Joi.number().integer().required(),
 
     email: Joi.string().email().optional().allow(null, ""),
+
+    // Admin must not set PIN. User sets it later.
+    securityPin: Joi.any().forbidden().messages({
+      "any.unknown":
+        "securityPin is not allowed. The user must create their own security PIN.",
+    }),
+    security_pin: Joi.any().forbidden().messages({
+      "any.unknown":
+        "security_pin is not allowed. The user must create their own security PIN.",
+    }),
   });
 
   static validate(data) {
@@ -51,7 +62,7 @@ class CreateUserRequestDto {
       abortEarly: false,
     });
     if (error) {
-      throw new Error(error.details.map((d) => d.message).join(", "));
+      throw new AppError(error.details.map((d) => d.message).join(", "), 400);
     }
     return value;
   }

@@ -14,6 +14,10 @@ import AppError from "../../../utils/AppError.js";
 
 class WorkflowService {
   async moveFile(fileId, moveData, currentUser) {
+    if (currentUser?.system_role === ROLES.ADMIN) {
+      throw new AppError("Admins are not allowed to move files.", 403);
+    }
+
     const transaction = await sequelize.transaction();
 
     try {

@@ -1,7 +1,9 @@
 import { Router } from "express";
 import FileController from "../controllers/file.controller.js";
 import { protect } from "../../../middlewares/auth.middleware.js";
+import { restrictTo } from "../../../middlewares/rbac.middleware.js";
 import { upload } from "../../../middlewares/upload.middleware.js";
+import { ROLES } from "../../../config/constants.js";
 
 const router = Router();
 
@@ -168,7 +170,7 @@ router.get("/:id/history", FileController.getFileHistory);
 
 router.post(
   "/",
-  protect,
+  restrictTo(ROLES.STAFF, ROLES.BOARD_MEMBER),
   upload.fields([
     { name: "puc", maxCount: 1 }, // The Main Letter (Mandatory)
     { name: "attachments", maxCount: 5 }, // Supporting Docs (Optional, max 5)

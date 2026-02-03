@@ -1,5 +1,6 @@
 import AuthService from "../services/auth.service.js";
 import LoginRequestDto from "../dtos/request/LoginRequestDto.js";
+import AppError from "../../../utils/AppError.js";
 
 class AuthController {
   async login(req, res, next) {
