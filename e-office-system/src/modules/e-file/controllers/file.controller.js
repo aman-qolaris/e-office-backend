@@ -6,9 +6,12 @@ class FileController {
   async createFile(req, res, next) {
     try {
       // 1. Check if file is present
-      if (!req.file) {
-        throw new AppError("PUC Document (PDF/Image) is required", 400);
+      if (!req.files || !req.files["puc"]) {
+        throw new AppError("PUC Document (Main PDF) is required", 400);
       }
+
+      const pucFile = req.files["puc"][0]; // The Main File
+      const attachmentFiles = req.files["attachments"] || []; // Array of extra files (can be empty)
 
       // 2. Validate Text Data
       const fileData = CreateFileRequestDto.validate(req.body);
@@ -18,9 +21,8 @@ class FileController {
       const newFile = await FileService.createFile(
         fileData,
         req.user,
-        req.file.buffer,
-        req.file.originalname,
-        req.file.mimetype,
+        pucFile, // Pass the whole PUC object (buffer, name, mime)
+        attachmentFiles, // Pass the array of attachments
       );
 
       // 4. Response

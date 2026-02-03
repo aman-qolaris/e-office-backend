@@ -40,6 +40,7 @@ export const FILE_TYPES = {
 };
 
 export const MOVEMENT_ACTIONS = {
+  CREATED: "CREATED",
   FORWARD: "FORWARD", // Standard move
   REVERT: "REVERT", // Send back for correction
   APPROVE: "APPROVE", // Final approval
