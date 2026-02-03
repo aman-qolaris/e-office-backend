@@ -15,6 +15,16 @@ router.get("/stats", FileController.getDashboardStats);
 router.get("/:id/history", FileController.getFileHistory);
 
 // POST /api/v1/files
-router.post("/", upload.single("puc"), FileController.createFile);
+// router.post("/", upload.single("puc"), FileController.createFile);
+
+router.post(
+  "/",
+  protect,
+  upload.fields([
+    { name: "puc", maxCount: 1 }, // The Main Letter (Mandatory)
+    { name: "attachments", maxCount: 5 }, // Supporting Docs (Optional, max 5)
+  ]),
+  FileController.createFile,
+);
 
 export default router;

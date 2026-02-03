@@ -1,7 +1,9 @@
 import path from "path";
 import {
+  sequelize,
   FileMaster,
   FileMovement,
+  FileAttachment,
   User,
   Department,
 } from "../../../database/models/index.js"; // Import Department
@@ -12,66 +14,123 @@ import FileResponseDto from "../dtos/response/FileResponseDto.js"; // Import DTO
 import { Op } from "sequelize";
 
 class FileService {
-  async createFile(fileData, user, fileBuffer, originalName, mimeType) {
-    const year = new Date().getFullYear();
+  async createFile(fileData, user, pucFile, attachments) {
+    const transaction = await sequelize.transaction(); // START TRANSACTION
 
-    // 1. Get Department Data to generate Code
-    // (We need the department name to make the code e.g. "Health" -> "HEA")
-    const department = await Department.findByPk(user.department_id);
-    const deptCode = department.name.substring(0, 3).toUpperCase();
-
-    // 2. Generate Running Number (Sequence)
-    // Count how many files this department created this year
-    // NOTE: In high-traffic apps, this needs a transaction/lock. For now, count is fine.
-    const count = await FileMaster.count({
-      where: {
-        department_id: user.department_id,
-      },
-    });
-    const runningNo = String(count + 1).padStart(3, "0"); // 1 -> "001"
-
-    // 3. Format: MMD/DEPT/001/2026
-    const fileNumber = `MMD/${deptCode}/${runningNo}/${year}`;
-
-    // 4. Prepare MinIO Path
-    // Format: files/2026/HEA/1738...-budget.pdf
-    const timestamp = Date.now();
-    const extension = path.extname(originalName);
-    const uniqueSuffix = `${timestamp}-${Math.round(Math.random() * 1e4)}`;
-
-    // This is the clean structure you asked for
-    const objectName = `files/${year}/${deptCode}/${uniqueSuffix}${extension}`;
-
-    // 5. Upload to MinIO
     try {
-      await minioClient.putObject(BUCKET_NAME, objectName, fileBuffer);
-    } catch (err) {
-      console.error("MinIO Upload Error:", err);
-      throw new AppError("Failed to upload file to storage", 500);
+      const year = new Date().getFullYear();
+
+      // 1. Get Department Data
+      const department = await Department.findByPk(user.department_id);
+      const deptCode = department.name.substring(0, 3).toUpperCase();
+
+      // 2. Generate Running Number
+      const count = await FileMaster.count({
+        where: { department_id: user.department_id },
+        transaction, // Pass transaction to ensure accuracy
+      });
+      const runningNo = String(count + 1).padStart(3, "0");
+
+      // 3. Generate File Number: MMD/DEPT/001/2026
+      const fileNumber = `MMD/${deptCode}/${runningNo}/${year}`;
+
+      // --- STEP 4: UPLOAD PUC (MAIN FILE) ---
+      const pucTimestamp = Date.now();
+      const pucExt = path.extname(pucFile.originalname);
+      const pucUniqueSuffix = `${pucTimestamp}-${Math.round(Math.random() * 1e4)}`;
+      const pucObjectName = `files/${year}/${deptCode}/${pucUniqueSuffix}${pucExt}`;
+
+      try {
+        await minioClient.putObject(BUCKET_NAME, pucObjectName, pucFile.buffer);
+      } catch (err) {
+        console.error("MinIO PUC Upload Error:", err);
+        throw new AppError("Failed to upload Main File to storage", 500);
+      }
+
+      // --- STEP 5: SAVE MASTER FILE TO DB ---
+      const newFile = await FileMaster.create(
+        {
+          file_number: fileNumber,
+          subject: fileData.subject,
+          description: fileData.description,
+          priority: fileData.priority,
+          type: fileData.type,
+          status: FILE_STATUS.DRAFT,
+
+          puc_url: pucObjectName,
+          original_filename: pucFile.originalname,
+          mime_type: pucFile.mimetype,
+
+          created_by: user.id,
+          current_holder_id: user.id,
+          department_id: user.department_id,
+        },
+        { transaction },
+      );
+
+      // --- STEP 6: PROCESS ATTACHMENTS (NEW!) ---
+      if (attachments && attachments.length > 0) {
+        await Promise.all(
+          attachments.map(async (file) => {
+            // A. Generate MinIO Path
+            const attExt = path.extname(file.originalname);
+            const attSuffix = `${Date.now()}-${Math.round(Math.random() * 1e4)}`;
+            const attObjectName = `files/${year}/${deptCode}/attachments/${attSuffix}${attExt}`;
+
+            // B. Upload
+            await minioClient.putObject(
+              BUCKET_NAME,
+              attObjectName,
+              file.buffer,
+            );
+
+            // C. Save to DB
+            return FileAttachment.create(
+              {
+                file_id: newFile.id,
+                original_name: file.originalname,
+                file_key: attObjectName,
+                file_url: attObjectName,
+                mime_type: file.mimetype,
+                file_size: file.size,
+              },
+              { transaction },
+            );
+          }),
+        );
+      }
+
+      // --- STEP 7: INITIAL HISTORY LOG (CRITICAL ADDITION) ---
+      // This ensures the history tab is not empty!
+      await FileMovement.create(
+        {
+          file_id: newFile.id,
+          sent_by: user.id,
+          sent_to: user.id, // Self-movement
+          action: "CREATED", // Or use specific constant like MOVEMENT_ACTIONS.CREATED
+          remarks: "File Initiated / Draft Created",
+          is_read: true,
+        },
+        { transaction },
+      );
+
+      // 8. Commit Transaction
+      await transaction.commit();
+
+      // 9. Return Response
+      await newFile.reload({
+        include: [
+          { model: Department, as: "department" },
+          { model: User, as: "creator" },
+          { model: FileAttachment, as: "attachments" }, // Include attachments in response
+        ],
+      });
+
+      return new FileResponseDto(newFile);
+    } catch (error) {
+      await transaction.rollback(); // Undo DB changes if MinIO or anything else fails
+      throw error;
     }
-
-    // 6. Save to Database
-    const newFile = await FileMaster.create({
-      file_number: fileNumber,
-      subject: fileData.subject,
-      description: fileData.description,
-      priority: fileData.priority,
-      type: fileData.type,
-      status: FILE_STATUS.DRAFT,
-
-      puc_url: objectName,
-      original_filename: originalName, // Store original name
-      mime_type: mimeType, // Store mime type
-
-      created_by: user.id,
-      current_holder_id: user.id,
-      department_id: user.department_id,
-    });
-
-    // 7. Return Formatted DTO (with IST Time)
-    // We reload to get the Department name for the response
-    await newFile.reload({ include: ["department", "creator"] });
-    return new FileResponseDto(newFile);
   }
 
   async getInbox(userId) {
@@ -143,6 +202,7 @@ class FileService {
           as: "currentHolder",
           attributes: ["full_name", "designation"],
         },
+        { model: FileAttachment, as: "attachments" },
       ],
     });
 

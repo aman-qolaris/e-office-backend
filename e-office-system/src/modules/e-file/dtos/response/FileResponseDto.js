@@ -11,6 +11,16 @@ class FileResponseDto {
     this.pucUrl = file.puc_url;
     this.originalName = file.original_filename;
 
+    this.attachments = file.attachments
+      ? file.attachments.map((att) => ({
+          id: att.id,
+          name: att.original_name,
+          url: att.file_url,
+          type: att.mime_type,
+          size: att.file_size,
+        }))
+      : [];
+
     // Departments & Users (if included)
     this.department = file.department
       ? file.department.name

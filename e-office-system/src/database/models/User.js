@@ -30,7 +30,7 @@ User.init(
     phone_number: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
+      // unique: true,
       validate: {
         // Regex: Starts with 6,7,8,or 9, followed by 9 digits
         is: /^[6-9]\d{9}$/,
@@ -92,6 +92,21 @@ User.init(
     modelName: "User",
     tableName: "users",
     timestamps: true,
+    // --- THE FIX: EXPLICITLY NAMED INDEXES ---
+    // This enforces uniqueness WITHOUT causing the "Too many keys" crash.
+    indexes: [
+      {
+        unique: true,
+        fields: ["phone_number"],
+        name: "users_phone_number_unique_idx", // Fixed Name = No Duplicates
+      },
+      {
+        unique: true,
+        fields: ["email"],
+        name: "users_email_unique_idx", // Fixed Name = No Duplicates
+      },
+    ],
+    // -----------------------------------------
     hooks: {
       // AUTOMATIC SECURITY: Hash password/PIN before saving to DB
       beforeCreate: async (user) => {
