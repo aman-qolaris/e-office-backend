@@ -4,6 +4,9 @@ import cors from "cors";
 import morgan from "morgan";
 import routes from "./routes/index.js";
 
+import swaggerUi from "swagger-ui-express";
+import swaggerSpecs from "./config/swagger.js";
+
 const app = express();
 
 // 1. Global Middlewares
@@ -12,6 +15,9 @@ app.use(cors()); // Cross-Origin Resource Sharing
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use(morgan("dev")); // HTTP Request Logger
+
+// This serves the interactive documentation at http://localhost:4000/api-docs
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 
 // 2. Health Check Route
 app.get("/health", (req, res) => {
