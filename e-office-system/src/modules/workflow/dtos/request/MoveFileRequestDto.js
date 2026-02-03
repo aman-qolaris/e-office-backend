@@ -18,9 +18,9 @@ class MoveFileRequestDto {
       .messages({ "any.required": "Remarks are mandatory for audit purposes" }),
 
     pin: Joi.string()
-      .length(4)
+      .pattern(/^\d{4}$/)
       .optional() // It is optional because FORWARD doesn't need it
-      .messages({ "string.length": "PIN must be exactly 4 digits" }),
+      .messages({ "string.pattern.base": "PIN must be exactly 4 digits" }),
   });
 
   static validate(data) {

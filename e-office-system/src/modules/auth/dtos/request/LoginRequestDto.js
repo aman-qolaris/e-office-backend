@@ -17,11 +17,16 @@ class LoginRequestDto {
         "any.required": "Phone number is required",
       }),
 
-    password: Joi.string().min(8).max(16).required().messages({
-      "string.min": "Password must be at least 8 characters",
-      "string.max": "Password cannot exceed 16 characters",
-      "any.required": "Password is required",
-    }),
+    password: Joi.string()
+      .pattern(
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])(?!.*\s).{8,16}$/,
+      )
+      .required()
+      .messages({
+        "string.pattern.base":
+          "Password must be 8-16 characters and include uppercase, lowercase, number, and special character (no spaces)",
+        "any.required": "Password is required",
+      }),
   });
 
   // Validate method
