@@ -20,7 +20,16 @@ class CreateUserRequestDto {
       .required()
       .messages({ "string.pattern.base": "Invalid Indian Phone Number" }),
 
-    password: Joi.string().min(8).max(16).required(),
+    password: Joi.string()
+      .pattern(
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])(?!.*\s).{8,16}$/,
+      )
+      .required()
+      .messages({
+        "string.pattern.base":
+          "Password must be 8-16 characters and include uppercase, lowercase, number, and special character (no spaces)",
+        "any.required": "Password is required",
+      }),
 
     // Must be a valid System Role (ADMIN, STAFF, BOARD_MEMBER)
     systemRole: Joi.string()
