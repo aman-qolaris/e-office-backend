@@ -49,6 +49,16 @@ router.get("/designations", UserController.getAllDesignations);
 /**
  * @openapi
  * /users:
+ *   get:
+ *     summary: Get List of Users
+ *     description: Returns active users (excluding the currently logged-in user)
+ *     tags:
+ *       - Users
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       '200':
+ *         description: List of users
  *   post:
  *     summary: Create a new User (Admin Only)
  *     tags:
@@ -104,6 +114,7 @@ router.get("/designations", UserController.getAllDesignations);
  *       '409':
  *         description: User already exists
  */
+router.get("/", UserController.getAllUsers);
 router.post("/", restrictTo(ROLES.ADMIN), UserController.createUser);
 
 export default router;

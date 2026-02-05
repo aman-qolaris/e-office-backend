@@ -3,6 +3,7 @@ import {
   Department,
   Designation,
 } from "../../../database/models/index.js";
+import { Op } from "sequelize";
 import UserResponseDto from "../dtos/response/UserResponseDto.js";
 import AppError from "../../../utils/AppError.js";
 
@@ -45,6 +46,31 @@ class UserService {
 
     // 5. Return Sanitized DTO
     return new UserResponseDto(newUser);
+  }
+
+  async getAllUsers(currentUserId) {
+    const users = await User.findAll({
+      where: {
+        id: { [Op.ne]: currentUserId }, // Exclude the person requesting (Self)
+        is_active: true, // Only show active staff
+      },
+      attributes: ["id", "full_name", "email", "system_role"], // Fetch minimal data
+      include: [
+        {
+          model: Designation,
+          as: "designation",
+          attributes: ["name"], // Important for the Dropdown Label
+        },
+        {
+          model: Department,
+          as: "department",
+          attributes: ["name"], // Helpful context
+        },
+      ],
+      order: [["full_name", "ASC"]], // Alphabetical order
+    });
+
+    return users;
   }
 
   async getAllDepartments() {
