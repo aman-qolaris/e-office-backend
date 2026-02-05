@@ -17,6 +17,37 @@ router.use(protect);
 
 /**
  * @openapi
+ * /users/departments:
+ *   get:
+ *     summary: Get List of Departments for Dropdown
+ *     tags:
+ *       - Users
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       '200':
+ *         description: List of departments
+ */
+// Add this BEFORE the POST / route so it doesn't conflict
+router.get("/departments", UserController.getAllDepartments);
+
+/**
+ * @openapi
+ * /users/designations:
+ *   get:
+ *     summary: Get List of Designations for Dropdown
+ *     tags:
+ *       - Users
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       '200':
+ *         description: List of designations
+ */
+router.get("/designations", UserController.getAllDesignations);
+
+/**
+ * @openapi
  * /users:
  *   post:
  *     summary: Create a new User (Admin Only)

@@ -8,7 +8,7 @@ class CreateUserRequestDto {
     this.phoneNumber = data.phoneNumber;
     this.password = data.password;
     this.systemRole = data.systemRole;
-    this.designation = data.designation;
+    this.designationId = data.designationId;
     this.departmentId = data.departmentId;
     this.email = data.email;
   }
@@ -38,9 +38,10 @@ class CreateUserRequestDto {
       .required(),
 
     // Must be a valid Designation (PRESIDENT, CLERK, etc.)
-    designation: Joi.string()
-      .valid(...Object.values(DESIGNATIONS))
-      .required(),
+    designationId: Joi.number().integer().required().messages({
+      "number.base": "Designation must be a selected ID",
+      "any.required": "Designation is required",
+    }),
 
     departmentId: Joi.number().integer().required(),
 

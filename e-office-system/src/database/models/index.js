@@ -4,11 +4,18 @@ import User from "./User.js";
 import FileMaster from "./FileMaster.js";
 import FileMovement from "./FileMovement.js";
 import FileAttachment from "./FileAttachment.js";
+import Designation from "./Designation.js";
 
 // Define Associations
 // 1. User & Department
 Department.hasMany(User, { foreignKey: "department_id" });
 User.belongsTo(Department, { foreignKey: "department_id", as: "department" });
+
+Designation.hasMany(User, { foreignKey: "designation_id" });
+User.belongsTo(Designation, {
+  foreignKey: "designation_id",
+  as: "designation",
+});
 
 // 2. File & User (Creator)
 User.hasMany(FileMaster, { foreignKey: "created_by" });
@@ -57,4 +64,5 @@ export {
   FileMaster,
   FileMovement,
   FileAttachment,
+  Designation,
 };

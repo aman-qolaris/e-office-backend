@@ -1,5 +1,9 @@
 import jwt from "jsonwebtoken";
-import { User, Department } from "../../../database/models/index.js";
+import {
+  User,
+  Department,
+  Designation,
+} from "../../../database/models/index.js";
 import AuthResponseDto from "../dtos/response/AuthResponseDto.js";
 import AppError from "../../../utils/AppError.js";
 
@@ -8,7 +12,10 @@ class AuthService {
     // 1. Find User (Include Department info)
     const user = await User.findOne({
       where: { phone_number: loginDto.phoneNumber },
-      include: [{ model: Department, as: "department" }],
+      include: [
+        { model: Department, as: "department" },
+        { model: Designation, as: "designation" },
+      ],
     });
 
     if (!user) {
@@ -56,7 +63,7 @@ class AuthService {
       {
         id: user.id,
         role: user.system_role,
-        designation: user.designation,
+        designation: user.designation ? user.designation.name : null,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN },
