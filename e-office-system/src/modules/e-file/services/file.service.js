@@ -148,7 +148,10 @@ class FileService {
         {
           model: User,
           as: "creator",
-          attributes: ["full_name", "designation"], // Who started this?
+          attributes: ["full_name"],
+          include: [
+            { model: Designation, as: "designation", attributes: ["name"] },
+          ],
         },
         {
           model: Department,
@@ -176,7 +179,10 @@ class FileService {
         {
           model: User,
           as: "currentHolder", // So I can see "Oh, Suresh has it now"
-          attributes: ["full_name", "designation"],
+          attributes: ["full_name"],
+          include: [
+            { model: Designation, as: "designation", attributes: ["name"] },
+          ],
         },
         {
           model: Department,
@@ -204,7 +210,10 @@ class FileService {
         {
           model: User,
           as: "currentHolder",
-          attributes: ["full_name", "designation"],
+          attributes: ["full_name"],
+          include: [
+            { model: Designation, as: "designation", attributes: ["name"] },
+          ],
         },
         { model: FileAttachment, as: "attachments" },
       ],
@@ -221,12 +230,18 @@ class FileService {
         {
           model: User,
           as: "sender",
-          attributes: ["full_name", "designation"],
+          attributes: ["full_name"],
+          include: [
+            { model: Designation, as: "designation", attributes: ["name"] },
+          ],
         },
         {
           model: User,
           as: "receiver",
-          attributes: ["full_name", "designation"],
+          attributes: ["full_name"],
+          include: [
+            { model: Designation, as: "designation", attributes: ["name"] },
+          ],
         },
       ],
       order: [["createdAt", "ASC"]], // Oldest first (Chronological order)
@@ -281,7 +296,10 @@ class FileService {
         {
           model: User,
           as: "currentHolder",
-          attributes: ["full_name", "designation"],
+          attributes: ["full_name"],
+          include: [
+            { model: Designation, as: "designation", attributes: ["name"] },
+          ],
         },
         {
           model: Department,

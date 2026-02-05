@@ -20,6 +20,35 @@ class UserController {
       next(error);
     }
   }
+
+  async getAllDepartments(req, res, next) {
+    try {
+      const departments = await UserService.getAllDepartments();
+
+      res.status(200).json({
+        success: true,
+        message: "Departments fetched successfully",
+        data: departments,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getAllDesignations(req, res, next) {
+    try {
+      const designations = await UserService.getAllDesignations();
+
+      res.status(200).json({
+        success: true,
+        message: "Designations fetched successfully",
+        count: designations.length,
+        data: designations,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default new UserController();

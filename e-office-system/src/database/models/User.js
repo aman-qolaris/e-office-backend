@@ -67,11 +67,13 @@ User.init(
       defaultValue: ROLES.STAFF,
     },
 
-    // Controls Organization Title (President, Secretary, Member)
-    designation: {
-      type: DataTypes.ENUM(...Object.values(DESIGNATIONS)),
+    designation_id: {
+      type: DataTypes.INTEGER,
       allowNull: false,
-      defaultValue: DESIGNATIONS.MEMBER,
+      references: {
+        model: "designations",
+        key: "id",
+      },
     },
 
     // --- SECURITY ---

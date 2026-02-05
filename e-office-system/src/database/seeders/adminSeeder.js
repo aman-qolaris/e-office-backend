@@ -1,14 +1,13 @@
 import "dotenv/config";
-import { sequelize, User } from "../models/index.js";
+import { sequelize, User, Designation } from "../models/index.js"; // Import Designation
 import { ROLES, DESIGNATIONS } from "../../config/constants.js";
 
 const seedAdmin = async () => {
   try {
     console.log("🌱 Starting Admin Seeder...");
-
     await sequelize.authenticate();
 
-    // 1. Check if an Admin already exists
+    // 1. Check if Admin exists
     const existingAdmin = await User.findOne({
       where: { system_role: ROLES.ADMIN },
     });
@@ -18,27 +17,39 @@ const seedAdmin = async () => {
       process.exit(0);
     }
 
-    // 2. Create the First Admin
-    // CHANGE THESE CREDENTIALS FOR YOUR LOCAL SETUP IF YOU WANT
+    // 2. GET DESIGNATION ID (⚠️ NEW STEP)
+    // We must find the ID for "SYSTEM_ADMIN" (or whatever you called it in the Designation Seeder)
+    const adminDesignation = await Designation.findOne({
+      where: { name: DESIGNATIONS.SYSTEM_ADMIN },
+    });
+
+    if (!adminDesignation) {
+      console.error(
+        "❌ Error: 'SYSTEM_ADMIN' designation not found in DB. Run designationSeeder first!",
+      );
+      process.exit(1);
+    }
+
+    // 3. Create Admin
     const adminData = {
       full_name: "System Administrator",
-      phone_number: "9876543210", // Valid 10-digit Indian number
-      password: "Admin@123", // Will be hashed automatically
+      phone_number: "9876543210",
+      password: "Admin@123",
       system_role: ROLES.ADMIN,
-      designation: DESIGNATIONS.SYSTEM_ADMIN, // Or specific Admin title
+
+      // ⚠️ CHANGED: Use the ID we found, not the string
+      designation_id: adminDesignation.id,
+
+      department_id: 1, // Ensure you have a department with ID 1 (e.g. General Administration)
       is_active: true,
-      // email is optional, so we can skip it or add dummy
     };
 
     await User.create(adminData);
 
     console.log("✅ Super Admin created successfully!");
-    console.log(`👉 Login Phone: ${adminData.phone_number}`);
-    console.log(`👉 Login Pass: ${adminData.password}`);
   } catch (error) {
     console.error("❌ Seeder failed:", error);
   } finally {
-    // Close connection so the script doesn't hang
     await sequelize.close();
   }
 };

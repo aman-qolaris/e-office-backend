@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import AppError from "../utils/AppError.js";
-import { User } from "../database/models/index.js";
+import { User, Designation } from "../database/models/index.js";
 
 export const protect = async (req, res, next) => {
   try {
@@ -23,7 +23,9 @@ export const protect = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // 3. Check if user still exists (Security Check)
-    const currentUser = await User.findByPk(decoded.id);
+    const currentUser = await User.findByPk(decoded.id, {
+      include: [{ model: Designation, as: "designation" }],
+    });
     if (!currentUser) {
       return next(
         new AppError("The user belonging to this token no longer exists.", 401),

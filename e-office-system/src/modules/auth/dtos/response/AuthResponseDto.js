@@ -6,7 +6,7 @@ class AuthResponseDto {
       fullName: user.full_name,
       phoneNumber: user.phone_number,
       systemRole: user.system_role, // ADMIN, STAFF, BOARD_MEMBER
-      designation: user.designation, // SYSTEM_ADMIN, PRESIDENT, etc.
+      designation: user.designation ? user.designation.name : null,
       department: user.department ? user.department.name : null,
       isPinSet: !!user.security_pin,
     };

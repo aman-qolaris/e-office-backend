@@ -1,4 +1,8 @@
-import { User, Department } from "../../../database/models/index.js";
+import {
+  User,
+  Department,
+  Designation,
+} from "../../../database/models/index.js";
 import UserResponseDto from "../dtos/response/UserResponseDto.js";
 import AppError from "../../../utils/AppError.js";
 
@@ -18,6 +22,11 @@ class UserService {
       throw new AppError("Department not found", 404);
     }
 
+    const designation = await Designation.findByPk(data.designationId);
+    if (!designation) {
+      throw new AppError("Designation not found", 404);
+    }
+
     // 3. Create User
     // Note: Password hashing is handled by the 'beforeCreate' hook in User model
     const newUser = await User.create({
@@ -25,17 +34,34 @@ class UserService {
       phone_number: data.phoneNumber,
       password: data.password, // Raw password, model will hash it
       system_role: data.systemRole,
-      designation: data.designation,
+      designation_id: data.designationId,
       department_id: data.departmentId,
       email: data.email,
       is_active: true,
     });
 
     // 4. Reload user to get the associated Department data for the response
-    await newUser.reload({ include: "department" });
+    await newUser.reload({ include: ["department", "designation"] });
 
     // 5. Return Sanitized DTO
     return new UserResponseDto(newUser);
+  }
+
+  async getAllDepartments() {
+    // Fetch only ID and Name to keep it lightweight for dropdowns
+    const departments = await Department.findAll({
+      attributes: ["id", "name"],
+      where: { is_active: true }, // Optional: Only show active depts
+    });
+    return departments;
+  }
+
+  async getAllDesignations() {
+    return await Designation.findAll({
+      where: { is_active: true },
+      attributes: ["id", "name", "level"],
+      order: [["level", "DESC"]], // Show President first
+    });
   }
 }
 

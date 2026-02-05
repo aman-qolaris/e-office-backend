@@ -3,6 +3,7 @@ import {
   FileMaster,
   FileMovement,
   User,
+  Designation,
 } from "../../../database/models/index.js";
 import {
   MOVEMENT_ACTIONS,
@@ -36,14 +37,19 @@ class WorkflowService {
       }
 
       // --- NEW: FETCH RECEIVER DETAILS ---
-      const receiver = await User.findByPk(moveData.receiverId);
+      const receiver = await User.findByPk(moveData.receiverId, {
+        include: [{ model: Designation, as: "designation" }],
+      });
       if (!receiver) {
         throw new AppError("Receiver not found", 404);
       }
 
       // --- NEW: HIERARCHY RULE 1 (Staff cannot skip to President) ---
       if (currentUser.system_role === ROLES.STAFF) {
-        if (receiver.designation === DESIGNATIONS.PRESIDENT) {
+        if (
+          receiver.designation &&
+          receiver.designation.name === DESIGNATIONS.PRESIDENT
+        ) {
           throw new AppError(
             "Hierarchy Violation: Staff members cannot send files directly to the President. Please route through a Board Member.",
             403,
