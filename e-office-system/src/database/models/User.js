@@ -76,6 +76,15 @@ User.init(
       },
     },
 
+    department_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false, // Every staff member must belong to a department
+      references: {
+        model: "departments",
+        key: "id",
+      },
+    },
+
     // --- SECURITY ---
 
     // Hashed PIN for "Digital Signature" approvals
