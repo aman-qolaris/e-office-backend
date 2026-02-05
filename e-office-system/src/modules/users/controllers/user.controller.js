@@ -21,6 +21,21 @@ class UserController {
     }
   }
 
+  async getAllUsers(req, res, next) {
+    try {
+      // Pass the current user's ID so we can exclude them from the list
+      const users = await UserService.getAllUsers(req.user.id);
+
+      res.status(200).json({
+        success: true,
+        count: users.length,
+        data: users,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getAllDepartments(req, res, next) {
     try {
       const departments = await UserService.getAllDepartments();
