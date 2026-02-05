@@ -27,8 +27,30 @@ router.use(protect);
  *     responses:
  *       '200':
  *         description: List of departments
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       name:
+ *                         type: string
+ *                         example: "Maharashtra Mandal"
+ *       '401':
+ *         description: Unauthorized
  */
-// Add this BEFORE the POST / route so it doesn't conflict
+// Keep static routes before parameterized routes like /:id
 router.get("/departments", UserController.getAllDepartments);
 
 /**
@@ -43,6 +65,34 @@ router.get("/departments", UserController.getAllDepartments);
  *     responses:
  *       '200':
  *         description: List of designations
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 count:
+ *                   type: integer
+ *                   example: 7
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       name:
+ *                         type: string
+ *                         example: "SECRETARY"
+ *                       level:
+ *                         type: integer
+ *                         example: 5
+ *       '401':
+ *         description: Unauthorized
  */
 router.get("/designations", UserController.getAllDesignations);
 
@@ -59,6 +109,51 @@ router.get("/designations", UserController.getAllDesignations);
  *     responses:
  *       '200':
  *         description: List of users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 count:
+ *                   type: integer
+ *                   example: 12
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 2
+ *                       full_name:
+ *                         type: string
+ *                         example: "Raju Clerk"
+ *                       email:
+ *                         type: string
+ *                         nullable: true
+ *                         example: "raju@mandal.com"
+ *                       system_role:
+ *                         type: string
+ *                         enum: [ADMIN, STAFF, BOARD_MEMBER]
+ *                         example: "STAFF"
+ *                       designation:
+ *                         type: object
+ *                         nullable: true
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                             example: "CLERK"
+ *                       department:
+ *                         type: object
+ *                         nullable: true
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                             example: "Maharashtra Mandal"
+ *       '401':
+ *         description: Unauthorized
  *   post:
  *     summary: Create a new User (Admin Only)
  *     tags:
@@ -76,7 +171,7 @@ router.get("/designations", UserController.getAllDesignations);
  *               - phoneNumber
  *               - password
  *               - systemRole
- *               - designation
+ *               - designationId
  *               - departmentId
  *             properties:
  *               fullName:
@@ -94,13 +189,13 @@ router.get("/designations", UserController.getAllDesignations);
  *                 type: string
  *                 enum: [ADMIN, STAFF, BOARD_MEMBER]
  *                 example: "STAFF"
- *               designation:
- *                 type: string
- *                 description: The official job title
- *                 enum: [PRESIDENT, SECRETARY, WARDEN, COORDINATOR, MEMBER, CLERK, SYSTEM_ADMIN]
- *                 example: "CLERK"
+ *               designationId:
+ *                 type: integer
+ *                 description: Designation ID (from GET /users/designations)
+ *                 example: 3
  *               departmentId:
  *                 type: integer
+ *                 description: Department ID (from GET /users/departments)
  *                 example: 1
  *               email:
  *                 type: string
@@ -109,6 +204,10 @@ router.get("/designations", UserController.getAllDesignations);
  *     responses:
  *       '201':
  *         description: User created successfully
+ *       '400':
+ *         description: Validation error
+ *       '401':
+ *         description: Unauthorized
  *       '403':
  *         description: Forbidden (You are not an Admin)
  *       '409':
@@ -116,5 +215,70 @@ router.get("/designations", UserController.getAllDesignations);
  */
 router.get("/", UserController.getAllUsers);
 router.post("/", restrictTo(ROLES.ADMIN), UserController.createUser);
+
+/**
+ * @openapi
+ * /users/{id}:
+ *   patch:
+ *     summary: Update User Details (Admin Only)
+ *     description: Phone number cannot be updated. Use this to update name, role, department, designation, password, or deactivate users.
+ *     tags:
+ *       - Users
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           example: 2
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *                 example: "Raju Clerk"
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 nullable: true
+ *                 example: "raju@mandal.com"
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: "8-16 chars with upper/lower/number/special (no spaces)"
+ *               systemRole:
+ *                 type: string
+ *                 enum: [ADMIN, STAFF, BOARD_MEMBER]
+ *                 example: "STAFF"
+ *               designationId:
+ *                 type: integer
+ *                 example: 3
+ *               departmentId:
+ *                 type: integer
+ *                 example: 1
+ *               isActive:
+ *                 type: boolean
+ *                 example: true
+ *     responses:
+ *       '200':
+ *         description: User updated successfully
+ *       '400':
+ *         description: Validation Error (e.g. phoneNumber provided)
+ *       '401':
+ *         description: Unauthorized
+ *       '403':
+ *         description: Forbidden
+ *       '404':
+ *         description: User not found
+ *       '409':
+ *         description: Email already in use
+ */
+router.patch("/:id", restrictTo(ROLES.ADMIN), UserController.updateUser);
 
 export default router;

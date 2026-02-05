@@ -1,5 +1,6 @@
 import UserService from "../services/user.service.js";
 import CreateUserRequestDto from "../dtos/request/CreateUserRequestDto.js";
+import UpdateUserRequestDto from "../dtos/request/UpdateUserRequestDto.js";
 
 class UserController {
   async createUser(req, res, next) {
@@ -15,6 +16,27 @@ class UserController {
         success: true,
         message: "User created successfully",
         data: createdUser,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateUser(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      // 1. Validate Input (Forbids phone number)
+      const updateData = UpdateUserRequestDto.validate(req.body);
+
+      // 2. Call Service
+      const updatedUser = await UserService.updateUser(id, updateData);
+
+      // 3. Send Response
+      res.status(200).json({
+        success: true,
+        message: "User details updated successfully",
+        data: updatedUser,
       });
     } catch (error) {
       next(error);

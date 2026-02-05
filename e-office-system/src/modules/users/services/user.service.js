@@ -48,6 +48,58 @@ class UserService {
     return new UserResponseDto(newUser);
   }
 
+  async updateUser(userId, data) {
+    // 1. Find User
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+
+    // 2. Check Valid Foreign Keys (If being updated)
+    if (data.departmentId) {
+      const dept = await Department.findByPk(data.departmentId);
+      if (!dept) throw new AppError("Department not found", 404);
+    }
+
+    if (data.designationId) {
+      const desig = await Designation.findByPk(data.designationId);
+      if (!desig) throw new AppError("Designation not found", 404);
+    }
+
+    // 3. Unique Email Check (If being changed)
+    if (data.email && data.email !== user.email) {
+      const emailExists = await User.findOne({
+        where: { email: data.email, id: { [Op.ne]: userId } },
+      });
+      if (emailExists) {
+        throw new AppError("Email already in use by another user", 409);
+      }
+    }
+
+    // 4. Update Fields
+    // Using Object.assign to copy only provided fields
+    Object.assign(user, {
+      full_name: data.fullName || user.full_name,
+      email: data.email !== undefined ? data.email : user.email,
+      system_role: data.systemRole || user.system_role,
+      designation_id: data.designationId || user.designation_id,
+      department_id: data.departmentId || user.department_id,
+      is_active: data.isActive !== undefined ? data.isActive : user.is_active,
+    });
+
+    // Handle Password explicitly (to trigger Sequelize 'changed' hook)
+    if (data.password) {
+      user.password = data.password;
+    }
+
+    await user.save(); // Hooks in User.js will hash password if needed
+
+    // 5. Reload for Relationship Data
+    await user.reload({ include: ["department", "designation"] });
+
+    return new UserResponseDto(user);
+  }
+
   async getAllUsers(currentUserId) {
     const users = await User.findAll({
       where: {
