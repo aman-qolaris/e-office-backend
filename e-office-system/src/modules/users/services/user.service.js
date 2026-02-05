@@ -141,6 +141,47 @@ class UserService {
       order: [["level", "DESC"]], // Show President first
     });
   }
+
+  async createDepartment(data) {
+    // 1. Check for Duplicate Name
+    const existingDept = await Department.findOne({
+      where: { name: data.name },
+    });
+    if (existingDept) {
+      throw new AppError(`Department '${data.name}' already exists`, 409);
+    }
+
+    // 2. Create
+    const newDept = await Department.create({
+      name: data.name,
+      description: data.description,
+      is_active: true,
+    });
+
+    return newDept;
+  }
+
+  async createDesignation(data) {
+    // 1. Force Name to Uppercase (Fixes the issue)
+    const normalizedName = data.name.trim().toUpperCase();
+
+    // 2. Check for Duplicate Name
+    const existingDesig = await Designation.findOne({
+      where: { name: normalizedName },
+    });
+    if (existingDesig) {
+      throw new AppError(`Designation '${normalizedName}' already exists`, 409);
+    }
+
+    // 3. Create
+    const newDesig = await Designation.create({
+      name: normalizedName, // Save as "CLERK", not "Clerk"
+      level: data.level,
+      is_active: true,
+    });
+
+    return newDesig;
+  }
 }
 
 export default new UserService();

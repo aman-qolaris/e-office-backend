@@ -1,6 +1,8 @@
 import UserService from "../services/user.service.js";
 import CreateUserRequestDto from "../dtos/request/CreateUserRequestDto.js";
 import UpdateUserRequestDto from "../dtos/request/UpdateUserRequestDto.js";
+import CreateDepartmentRequestDto from "../dtos/request/CreateDepartmentRequestDto.js";
+import CreateDesignationRequestDto from "../dtos/request/CreateDesignationRequestDto.js";
 
 class UserController {
   async createUser(req, res, next) {
@@ -81,6 +83,36 @@ class UserController {
         message: "Designations fetched successfully",
         count: designations.length,
         data: designations,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createDepartment(req, res, next) {
+    try {
+      const data = CreateDepartmentRequestDto.validate(req.body);
+      const department = await UserService.createDepartment(data);
+
+      res.status(201).json({
+        success: true,
+        message: "Department created successfully",
+        data: department,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createDesignation(req, res, next) {
+    try {
+      const data = CreateDesignationRequestDto.validate(req.body);
+      const designation = await UserService.createDesignation(data);
+
+      res.status(201).json({
+        success: true,
+        message: "Designation created successfully",
+        data: designation,
       });
     } catch (error) {
       next(error);
