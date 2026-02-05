@@ -68,9 +68,9 @@ router.post("/login", AuthController.login);
 
 /**
  * @openapi
- * /auth/set-pin:
+ * /auth/change-password:
  *   post:
- *     summary: Set a 4-digit Security PIN
+ *     summary: Change login password
  *     tags:
  *       - Auth
  *     security:
@@ -82,31 +82,55 @@ router.post("/login", AuthController.login);
  *           schema:
  *             type: object
  *             required:
- *               - pin
+ *               - currentPassword
+ *               - newPassword
  *             properties:
- *               pin:
+ *               currentPassword:
  *                 type: string
- *                 pattern: '^\d{4}$'
- *                 description: Exactly 4 digits
- *                 example: "1234"
+ *               newPassword:
+ *                 type: string
+ *                 description: Strong password (8-16 chars, uppercase, lowercase, number, special)
  *     responses:
- *       '200':
- *         description: PIN set successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: "Security PIN set successfully"
- *       '400':
- *         description: Invalid PIN format
- *       '401':
- *         description: Unauthorized (Token missing or invalid)
+ *       "200":
+ *         description: Password changed successfully
+ *       "401":
+ *         description: Incorrect current password
+ */
+router.post("/change-password", protect, AuthController.changePassword);
+
+/**
+ * @openapi
+ * /auth/set-pin:
+ *   post:
+ *     summary: Set or update 4-digit security PIN (2FA)
+ *     tags:
+ *       - Auth
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *               - newPin
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 description: Current login password for verification
+ *               newPin:
+ *                 type: string
+ *                 pattern: '^\\d{4}$'
+ *                 description: New 4-digit PIN
+ *     responses:
+ *       "200":
+ *         description: PIN updated successfully
+ *       "400":
+ *         description: New PIN cannot be the same as old PIN
+ *       "401":
+ *         description: Invalid password provided
  */
 router.post("/set-pin", protect, AuthController.setPin);
 
