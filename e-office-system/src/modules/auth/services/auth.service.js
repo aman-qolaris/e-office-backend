@@ -39,16 +39,43 @@ class AuthService {
     return new AuthResponseDto(user, token);
   }
 
-  async setPin(userId, pin) {
-    // 1. Validation: Must be exactly 4 digits
-    // The Validator middleware usually catches this, but this is a safety net
-    if (!/^\d{4}$/.test(pin)) {
-      throw new AppError("PIN must be exactly 4 digits", 400);
+  async changePassword(userId, { currentPassword, newPassword }) {
+    const user = await User.findByPk(userId);
+    if (!user) throw new AppError("User not found", 404);
+
+    // 1. Verify Current Password
+    const isMatch = await user.validatePassword(currentPassword);
+    if (!isMatch) {
+      throw new AppError("Current password is incorrect", 401);
     }
 
+    // 2. Update Password (Hook will hash it automatically)
+    user.password = newPassword;
+    await user.save();
+
+    return { message: "Password changed successfully" };
+  }
+
+  async setPin(userId, { password, newPin }) {
     const user = await User.findByPk(userId);
     if (!user) {
       throw new AppError("User not found", 404);
+    }
+
+    // 1. Verify Password (2FA Step)
+    const isPasswordValid = await user.validatePassword(password);
+    if (!isPasswordValid) {
+      throw new AppError("Invalid password. Cannot set PIN.", 401);
+    }
+
+    // 2. Check if New PIN is same as Old PIN
+    // validatePin compares plain text against the hash
+    const isSameAsOld = await user.validatePin(newPin);
+    if (isSameAsOld) {
+      throw new AppError(
+        "New PIN cannot be the same as the previous one.",
+        400,
+      );
     }
 
     // 2. Save PIN (The Model Hook will auto-hash this!)
