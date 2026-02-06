@@ -1,5 +1,6 @@
 import Joi from "joi";
 import { PRIORITY, FILE_TYPES } from "../../../../config/constants.js";
+import AppError from "../../../../utils/AppError.js";
 
 class CreateFileRequestDto {
   static schema = Joi.object({
@@ -25,7 +26,8 @@ class CreateFileRequestDto {
       abortEarly: false,
     });
     if (error) {
-      throw new Error(error.details.map((d) => d.message).join(", "));
+      const errorMessage = error.details.map((d) => d.message).join(", ");
+      throw new AppError(errorMessage, 400);
     }
     return value;
   }

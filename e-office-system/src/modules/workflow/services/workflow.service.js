@@ -28,10 +28,12 @@ class WorkflowService {
         throw new AppError("File not found", 404);
       }
 
-      // 2. Security Check: Do I actually hold this file?
-      if (file.current_holder_id !== currentUser.id) {
+      if (
+        file.current_designation_id !== currentUser.designation_id ||
+        file.current_department_id !== currentUser.department_id
+      ) {
         throw new AppError(
-          "You do not have permission to move this file. You are not the current holder.",
+          "You do not have permission to move this file.",
           403,
         );
       }
@@ -128,8 +130,9 @@ class WorkflowService {
           break;
       }
 
-      // 4. Update Current Holder
-      file.current_holder_id = moveData.receiverId;
+      file.current_holder_id = moveData.receiverId; // Keep for reference
+      file.current_designation_id = receiver.designation_id; // CRITICAL
+      file.current_department_id = receiver.department_id; // CRITICAL
       file.status = newStatus;
 
       await file.save({ transaction });

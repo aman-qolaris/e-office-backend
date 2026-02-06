@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import AppError from "../utils/AppError.js";
-import { User, Designation } from "../database/models/index.js";
+import { User, Designation, Department } from "../database/models/index.js";
 
 export const protect = async (req, res, next) => {
   try {
@@ -24,7 +24,10 @@ export const protect = async (req, res, next) => {
 
     // 3. Check if user still exists (Security Check)
     const currentUser = await User.findByPk(decoded.id, {
-      include: [{ model: Designation, as: "designation" }],
+      include: [
+        { model: Designation, as: "designation" },
+        { model: Department, as: "department" },
+      ],
     });
     if (!currentUser) {
       return next(

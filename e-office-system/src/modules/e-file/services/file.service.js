@@ -6,11 +6,12 @@ import {
   FileAttachment,
   User,
   Department,
-} from "../../../database/models/index.js"; // Import Department
+  Designation, // Ensure Designation is imported
+} from "../../../database/models/index.js";
 import { FILE_STATUS, ROLES } from "../../../config/constants.js";
 import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import AppError from "../../../utils/AppError.js";
-import FileResponseDto from "../dtos/response/FileResponseDto.js"; // Import DTO
+import FileResponseDto from "../dtos/response/FileResponseDto.js";
 import { Op } from "sequelize";
 
 class FileService {
@@ -19,39 +20,29 @@ class FileService {
       throw new AppError("Admins are not allowed to create files.", 403);
     }
 
-    const transaction = await sequelize.transaction(); // START TRANSACTION
+    const transaction = await sequelize.transaction();
 
     try {
       const year = new Date().getFullYear();
-
-      // 1. Get Department Data
       const department = await Department.findByPk(user.department_id);
       const deptCode = department.name.substring(0, 3).toUpperCase();
 
-      // 2. Generate Running Number
       const count = await FileMaster.count({
         where: { department_id: user.department_id },
-        transaction, // Pass transaction to ensure accuracy
+        transaction,
       });
       const runningNo = String(count + 1).padStart(3, "0");
-
-      // 3. Generate File Number: MMD/DEPT/001/2026
       const fileNumber = `MMD/${deptCode}/${runningNo}/${year}`;
 
-      // --- STEP 4: UPLOAD PUC (MAIN FILE) ---
+      // Upload PUC
       const pucTimestamp = Date.now();
       const pucExt = path.extname(pucFile.originalname);
       const pucUniqueSuffix = `${pucTimestamp}-${Math.round(Math.random() * 1e4)}`;
       const pucObjectName = `files/${year}/${deptCode}/${pucUniqueSuffix}${pucExt}`;
 
-      try {
-        await minioClient.putObject(BUCKET_NAME, pucObjectName, pucFile.buffer);
-      } catch (err) {
-        console.error("MinIO PUC Upload Error:", err);
-        throw new AppError("Failed to upload Main File to storage", 500);
-      }
+      await minioClient.putObject(BUCKET_NAME, pucObjectName, pucFile.buffer);
 
-      // --- STEP 5: SAVE MASTER FILE TO DB ---
+      // Save File
       const newFile = await FileMaster.create(
         {
           file_number: fileNumber,
@@ -60,35 +51,34 @@ class FileService {
           priority: fileData.priority,
           type: fileData.type,
           status: FILE_STATUS.DRAFT,
-
           puc_url: pucObjectName,
           original_filename: pucFile.originalname,
           mime_type: pucFile.mimetype,
-
           created_by: user.id,
-          current_holder_id: user.id,
           department_id: user.department_id,
+
+          // 🚨 Position-Based Fields
+          current_holder_id: user.id,
+          current_designation_id: user.designation_id,
+          current_department_id: user.department_id,
         },
         { transaction },
       );
 
-      // --- STEP 6: PROCESS ATTACHMENTS (NEW!) ---
+      // Save Attachments
       if (attachments && attachments.length > 0) {
         await Promise.all(
           attachments.map(async (file) => {
-            // A. Generate MinIO Path
             const attExt = path.extname(file.originalname);
             const attSuffix = `${Date.now()}-${Math.round(Math.random() * 1e4)}`;
             const attObjectName = `files/${year}/${deptCode}/attachments/${attSuffix}${attExt}`;
 
-            // B. Upload
             await minioClient.putObject(
               BUCKET_NAME,
               attObjectName,
               file.buffer,
             );
 
-            // C. Save to DB
             return FileAttachment.create(
               {
                 file_id: newFile.id,
@@ -104,45 +94,45 @@ class FileService {
         );
       }
 
-      // --- STEP 7: INITIAL HISTORY LOG (CRITICAL ADDITION) ---
-      // This ensures the history tab is not empty!
+      // Initial Movement Log
       await FileMovement.create(
         {
           file_id: newFile.id,
           sent_by: user.id,
-          sent_to: user.id, // Self-movement
-          action: "CREATED", // Or use specific constant like MOVEMENT_ACTIONS.CREATED
+          sent_to: user.id,
+          action: "CREATED",
           remarks: "File Initiated / Draft Created",
           is_read: true,
         },
         { transaction },
       );
 
-      // 8. Commit Transaction
       await transaction.commit();
 
-      // 9. Return Response
       await newFile.reload({
         include: [
           { model: Department, as: "department" },
           { model: User, as: "creator" },
-          { model: FileAttachment, as: "attachments" }, // Include attachments in response
+          { model: FileAttachment, as: "attachments" },
+          // 🚨 ADDED: Include Position Details so DTO works immediately
+          { model: Designation, as: "currentDesignation" },
+          { model: Department, as: "currentDepartment" },
         ],
       });
 
       return new FileResponseDto(newFile);
     } catch (error) {
-      await transaction.rollback(); // Undo DB changes if MinIO or anything else fails
+      await transaction.rollback();
       throw error;
     }
   }
 
-  async getInbox(userId) {
-    // Fetch files where I am the current holder
+  async getInbox(user) {
     const files = await FileMaster.findAll({
       where: {
-        current_holder_id: userId,
-        // Optional: Filter out 'ARCHIVED' or 'CLOSED' if you want
+        // ✅ CORRECT: Filtering by Position
+        current_designation_id: user.designation_id,
+        current_department_id: user.department_id,
       },
       include: [
         {
@@ -153,47 +143,43 @@ class FileService {
             { model: Designation, as: "designation", attributes: ["name"] },
           ],
         },
-        {
-          model: Department,
-          as: "department",
-          attributes: ["name"], // Which dept?
-        },
+        { model: Department, as: "department", attributes: ["name"] },
+        // 🚨 ADDED: Must include these so DTO knows the current location
+        { model: Designation, as: "currentDesignation", attributes: ["name"] },
+        { model: Department, as: "currentDepartment", attributes: ["name"] },
       ],
-      order: [["updatedAt", "DESC"]], // Newest on top
+      order: [["updatedAt", "DESC"]],
     });
 
-    // Convert to DTOs (to format Dates to IST)
     return files.map((file) => new FileResponseDto(file));
   }
 
-  async getOutbox(userId) {
-    // Logic: Files I created OR files I worked on, BUT I don't hold them right now.
-    // For V1, let's keep it simple: "Files I Created" that are NOT with me.
-
+  async getOutbox(user) {
     const files = await FileMaster.findAll({
       where: {
-        created_by: userId,
-        current_holder_id: { [Op.ne]: userId }, // Op.ne means "Not Equal"
+        created_by: user.id,
+        department_id: user.department_id,
+        // ✅ CORRECT: Using Position Logic (Not in my inbox position)
+        [Op.or]: [
+          { current_designation_id: { [Op.ne]: user.designation_id } },
+          { current_department_id: { [Op.ne]: user.department_id } },
+        ],
       },
       include: [
         {
           model: User,
-          as: "currentHolder", // So I can see "Oh, Suresh has it now"
+          as: "currentHolder",
           attributes: ["full_name"],
-          include: [
-            { model: Designation, as: "designation", attributes: ["name"] },
-          ],
         },
-        {
-          model: Department,
-          as: "department",
-          attributes: ["name"],
-        },
+        // 🚨 ADDED: Crucial for Outbox to see "Where is my file now?"
+        { model: Designation, as: "currentDesignation", attributes: ["name"] },
+        { model: Department, as: "currentDepartment", attributes: ["name"] },
         {
           model: User,
           as: "creator",
           attributes: ["full_name"],
         },
+        { model: Department, as: "department", attributes: ["name"] },
       ],
       order: [["updatedAt", "DESC"]],
     });
@@ -202,19 +188,14 @@ class FileService {
   }
 
   async getFileHistory(fileId) {
-    // 1. Fetch File Details
     const file = await FileMaster.findByPk(fileId, {
       include: [
         { model: Department, as: "department", attributes: ["name"] },
         { model: User, as: "creator", attributes: ["full_name"] },
-        {
-          model: User,
-          as: "currentHolder",
-          attributes: ["full_name"],
-          include: [
-            { model: Designation, as: "designation", attributes: ["name"] },
-          ],
-        },
+        { model: User, as: "currentHolder", attributes: ["full_name"] },
+        // 🚨 ADDED: Includes for consistency
+        { model: Designation, as: "currentDesignation", attributes: ["name"] },
+        { model: Department, as: "currentDepartment", attributes: ["name"] },
         { model: FileAttachment, as: "attachments" },
       ],
     });
@@ -223,7 +204,6 @@ class FileService {
       throw new AppError("File not found", 404);
     }
 
-    // 2. Fetch Movements (The Audit Trail)
     const movements = await FileMovement.findAll({
       where: { file_id: fileId },
       include: [
@@ -244,19 +224,19 @@ class FileService {
           ],
         },
       ],
-      order: [["createdAt", "ASC"]], // Oldest first (Chronological order)
+      order: [["createdAt", "ASC"]],
     });
 
-    // 3. Return Combined Data
-    // We will format the movements nicely here or in a DTO
     return {
       file: new FileResponseDto(file),
       history: movements.map((move) => ({
         id: move.id,
         action: move.action,
         remarks: move.remarks,
-        from: move.sender.full_name,
-        to: move.receiver.full_name,
+        from: move.sender ? move.sender.full_name : "System",
+        to: move.receiver ? move.receiver.full_name : "System",
+        senderDesignation: move.sender?.designation?.name, // Helpful extra info
+        receiverDesignation: move.receiver?.designation?.name,
         date: new Date(move.createdAt).toLocaleString("en-IN", {
           timeZone: "Asia/Kolkata",
         }),
@@ -264,32 +244,26 @@ class FileService {
     };
   }
 
-  async searchFiles(queryFilters) {
-    // 1. Initialize the WHERE clause
-    const whereClause = {};
+  async searchFiles(query, user) {
+    // Changed arg name to 'query' to match usage
+    const { text, status, priority, departmentId } = query;
+    const whereClause = {
+      // 🚨 SECURITY: Force User's Department (unless you are implementing Global Admin Search later)
+      department_id: user.department_id,
+    };
 
-    // 2. Text Search (Subject OR File Number)
-    if (queryFilters.text) {
+    if (text) {
       whereClause[Op.or] = [
-        { subject: { [Op.like]: `%${queryFilters.text}%` } }, // Contains text
-        { file_number: { [Op.like]: `%${queryFilters.text}%` } }, // Contains text
+        { subject: { [Op.like]: `%${text}%` } },
+        { file_number: { [Op.like]: `%${text}%` } },
       ];
     }
 
-    // 3. Exact Filters
-    if (queryFilters.status) {
-      whereClause.status = queryFilters.status;
-    }
+    if (status) whereClause.status = status;
+    if (priority) whereClause.priority = priority;
 
-    if (queryFilters.priority) {
-      whereClause.priority = queryFilters.priority;
-    }
+    // Note: We ignore query.departmentId here to enforce the security rule above.
 
-    if (queryFilters.departmentId) {
-      whereClause.department_id = queryFilters.departmentId;
-    }
-
-    // 4. Execute Query
     const files = await FileMaster.findAll({
       where: whereClause,
       include: [
@@ -297,45 +271,42 @@ class FileService {
           model: User,
           as: "currentHolder",
           attributes: ["full_name"],
-          include: [
-            { model: Designation, as: "designation", attributes: ["name"] },
-          ],
         },
-        {
-          model: Department,
-          as: "department",
-          attributes: ["name"],
-        },
+        // 🚨 ADDED Includes
+        { model: Designation, as: "currentDesignation", attributes: ["name"] },
+        { model: Department, as: "currentDepartment", attributes: ["name"] },
+        { model: Department, as: "department", attributes: ["name"] },
       ],
-      order: [["updatedAt", "DESC"]], // Newest first
+      order: [["updatedAt", "DESC"]],
     });
 
     return files.map((file) => new FileResponseDto(file));
   }
 
-  async getDashboardStats(userId) {
-    // 1. Count Pending (Inbox)
+  async getDashboardStats(user) {
+    // Changed arg to 'user' object, not just userId
+    // 🚨 CORRECTED: Count based on POSITION
     const pendingCount = await FileMaster.count({
-      where: { current_holder_id: userId },
+      where: {
+        current_designation_id: user.designation_id,
+        current_department_id: user.department_id,
+      },
     });
 
-    // 2. Count Created (Total I started)
     const createdCount = await FileMaster.count({
-      where: { created_by: userId },
+      where: { created_by: user.id },
     });
 
-    // 3. Count Approved (My success rate)
     const approvedCount = await FileMaster.count({
       where: {
-        created_by: userId,
+        created_by: user.id,
         status: FILE_STATUS.APPROVED,
       },
     });
 
-    // 4. Count Rejected
     const rejectedCount = await FileMaster.count({
       where: {
-        created_by: userId,
+        created_by: user.id,
         status: FILE_STATUS.REJECTED,
       },
     });
