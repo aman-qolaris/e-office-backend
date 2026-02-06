@@ -452,6 +452,122 @@ class FileService {
       reverted: revertedCount,
     };
   }
+
+  /**
+   * Helper: Check Download Permission
+   * logic: Allow if User is Creator OR Current Holder OR in the same Department
+   */
+  _hasDownloadAccess(file, user) {
+    const isCreator = file.created_by === user.id;
+
+    // Position-based check for Holder
+    const isHolder =
+      file.current_designation_id === user.designation_id &&
+      file.current_department_id === user.department_id;
+
+    // Department check (Public within the department)
+    const isSameDept = file.department_id === user.department_id;
+
+    // Allow if any of these are true
+    return isCreator || isHolder || isSameDept;
+  }
+
+  /**
+   * 1. Download PUC (Main File)
+   */
+  async downloadPuc(fileId, user) {
+    const file = await FileMaster.findByPk(fileId);
+    if (!file) throw new AppError("File not found", 404);
+
+    if (!this._hasDownloadAccess(file, user)) {
+      throw new AppError(
+        "You do not have permission to download this file.",
+        403,
+      );
+    }
+
+    try {
+      const stream = await minioClient.getObject(BUCKET_NAME, file.puc_url);
+      return {
+        stream,
+        filename: file.original_filename,
+        mimeType: file.mime_type || "application/pdf",
+      };
+    } catch (err) {
+      console.error("MinIO Error:", err);
+      throw new AppError("Error retrieving file from storage.", 500);
+    }
+  }
+
+  /**
+   * 2. Download Attachment
+   */
+  async downloadAttachment(attachmentId, user) {
+    const attachment = await FileAttachment.findByPk(attachmentId);
+    if (!attachment) throw new AppError("Attachment not found", 404);
+
+    // We need the parent file to check permissions
+    const file = await FileMaster.findByPk(attachment.file_id);
+    if (!file) throw new AppError("Associated File not found", 404);
+
+    if (!this._hasDownloadAccess(file, user)) {
+      throw new AppError(
+        "You do not have permission to download this attachment.",
+        403,
+      );
+    }
+
+    try {
+      const stream = await minioClient.getObject(
+        BUCKET_NAME,
+        attachment.file_key,
+      );
+      return {
+        stream,
+        filename: attachment.original_name,
+        mimeType: attachment.mime_type || "application/pdf",
+      };
+    } catch (err) {
+      console.error("MinIO Error:", err);
+      throw new AppError("Error retrieving attachment from storage.", 500);
+    }
+  }
+
+  /**
+   * 3. Download Signed Document (President's Copy)
+   */
+  async downloadSignedDoc(fileId, user) {
+    const file = await FileMaster.findByPk(fileId);
+    if (!file) throw new AppError("File not found", 404);
+
+    if (!file.signed_doc_url) {
+      throw new AppError("This file has not been signed yet.", 404);
+    }
+
+    if (!this._hasDownloadAccess(file, user)) {
+      throw new AppError(
+        "You do not have permission to download this document.",
+        403,
+      );
+    }
+
+    try {
+      const stream = await minioClient.getObject(
+        BUCKET_NAME,
+        file.signed_doc_url,
+      );
+      const filename = `${file.file_number.replace(/\//g, "-")}_SIGNED.pdf`;
+
+      return {
+        stream,
+        filename,
+        mimeType: "application/pdf",
+      };
+    } catch (err) {
+      console.error("MinIO Error:", err);
+      throw new AppError("Error retrieving signed document.", 500);
+    }
+  }
 }
 
 export default new FileService();
