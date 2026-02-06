@@ -303,4 +303,112 @@ router.delete(
   FileController.removeAttachment,
 );
 
+/**
+ * @openapi
+ * /files/{id}/download-puc:
+ *   get:
+ *     summary: Download main PUC (PDF)
+ *     tags:
+ *       - Files
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: File ID
+ *     responses:
+ *       '200':
+ *         description: PUC file stream
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *           application/octet-stream:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       '403':
+ *         description: Forbidden
+ *       '404':
+ *         description: File or PUC not found
+ */
+router.get("/:id/download-puc", FileController.downloadPuc);
+
+/**
+ * @openapi
+ * /files/attachment/{attachmentId}/download:
+ *   get:
+ *     summary: Download a specific attachment
+ *     tags:
+ *       - Files
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: attachmentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Attachment ID
+ *     responses:
+ *       '200':
+ *         description: Attachment file stream
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *           application/octet-stream:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       '403':
+ *         description: Forbidden
+ *       '404':
+ *         description: Attachment not found
+ */
+router.get(
+  "/attachment/:attachmentId/download",
+  FileController.downloadAttachment,
+);
+
+/**
+ * @openapi
+ * /files/{id}/download-signed:
+ *   get:
+ *     summary: Download signed document (President's copy)
+ *     tags:
+ *       - Files
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: File ID
+ *     responses:
+ *       '200':
+ *         description: Signed document file stream
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *           application/octet-stream:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       '403':
+ *         description: Forbidden
+ *       '404':
+ *         description: Signed document not found
+ */
+router.get("/:id/download-signed", FileController.downloadSignedDoc);
+
 export default router;

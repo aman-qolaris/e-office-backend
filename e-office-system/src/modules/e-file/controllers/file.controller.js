@@ -171,6 +171,71 @@ class FileController {
       next(error);
     }
   }
+
+  /**
+   * Download PUC (Main File)
+   */
+  async downloadPuc(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { stream, filename, mimeType } = await FileService.downloadPuc(
+        id,
+        req.user,
+      );
+
+      // Set headers to trigger file download in browser
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`,
+      );
+      res.setHeader("Content-Type", mimeType);
+
+      // Pipe the stream directly to the response
+      stream.pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Download Attachment
+   */
+  async downloadAttachment(req, res, next) {
+    try {
+      const { attachmentId } = req.params;
+      const { stream, filename, mimeType } =
+        await FileService.downloadAttachment(attachmentId, req.user);
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`,
+      );
+      res.setHeader("Content-Type", mimeType);
+      stream.pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Download Signed Document (President's Copy)
+   */
+  async downloadSignedDoc(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { stream, filename, mimeType } =
+        await FileService.downloadSignedDoc(id, req.user);
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`,
+      );
+      res.setHeader("Content-Type", mimeType);
+      stream.pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default new FileController();
