@@ -28,6 +28,19 @@ FileMaster.belongsTo(User, {
   as: "currentHolder",
 });
 
+// 5. Position-Based Access Associations (NEW)
+Designation.hasMany(FileMaster, { foreignKey: "current_designation_id" });
+FileMaster.belongsTo(Designation, {
+  foreignKey: "current_designation_id",
+  as: "currentDesignation",
+});
+
+Department.hasMany(FileMaster, { foreignKey: "current_department_id" });
+FileMaster.belongsTo(Department, {
+  foreignKey: "current_department_id",
+  as: "currentDepartment",
+});
+
 // 4. File & Department
 Department.hasMany(FileMaster, { foreignKey: "department_id" });
 FileMaster.belongsTo(Department, {

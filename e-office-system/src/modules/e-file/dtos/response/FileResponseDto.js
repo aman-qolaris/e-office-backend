@@ -42,12 +42,19 @@ class FileResponseDto {
     this.updatedAt = new Date(file.updatedAt).toLocaleString("en-IN", options);
     if (file.currentHolder) {
       this.currentHolder = file.currentHolder.full_name;
-      this.currentHolderDesignation = file.currentHolder.designation
-        ? file.currentHolder.designation.name
-        : "";
     } else {
-      this.currentHolder = file.current_holder_id;
+      this.currentHolder = "Pending Assignment"; // Handle null user
     }
+
+    // NEW: Show Current Position
+    this.currentPosition = {
+      designation: file.currentDesignation
+        ? file.currentDesignation.name
+        : "Unknown",
+      department: file.currentDepartment
+        ? file.currentDepartment.name
+        : "Unknown",
+    };
   }
 }
 

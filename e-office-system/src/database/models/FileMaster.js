@@ -24,22 +24,18 @@ FileMaster.init(
       type: DataTypes.TEXT,
       allowNull: true,
     },
-
-    // --- UPDATED FILE COLUMNS ---
     puc_url: {
-      type: DataTypes.STRING, // The path in MinIO (e.g., files/2026/HLT/xyz.pdf)
+      type: DataTypes.STRING,
       allowNull: false,
     },
     original_filename: {
-      type: DataTypes.STRING, // e.g., "budget_estimate.pdf"
+      type: DataTypes.STRING,
       allowNull: false,
     },
     mime_type: {
-      type: DataTypes.STRING, // e.g., "application/pdf"
+      type: DataTypes.STRING,
       defaultValue: "application/pdf",
     },
-    // ---------------------------
-
     priority: {
       type: DataTypes.ENUM(...Object.values(PRIORITY)),
       defaultValue: PRIORITY.LOW,
@@ -56,13 +52,25 @@ FileMaster.init(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+
+    // --- POSITION BASED ACCESS FIELDS ---
     current_holder_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true, // Made nullable as files belong to position now
     },
+    current_designation_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false, // CRITICAL: Files must belong to a designation
+    },
+    current_department_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false, // CRITICAL: Files must belong to a department
+    },
+    // ------------------------------------
+
     department_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: false, // The Origin Department
     },
   },
   {

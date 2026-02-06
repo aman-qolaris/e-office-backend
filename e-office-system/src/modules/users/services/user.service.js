@@ -1,4 +1,5 @@
 import {
+  sequelize,
   User,
   Department,
   Designation,
@@ -49,55 +50,78 @@ class UserService {
   }
 
   async updateUser(userId, data) {
-    // 1. Find User
-    const user = await User.findByPk(userId);
-    if (!user) {
-      throw new AppError("User not found", 404);
-    }
-
-    // 2. Check Valid Foreign Keys (If being updated)
-    if (data.departmentId) {
-      const dept = await Department.findByPk(data.departmentId);
-      if (!dept) throw new AppError("Department not found", 404);
-    }
-
-    if (data.designationId) {
-      const desig = await Designation.findByPk(data.designationId);
-      if (!desig) throw new AppError("Designation not found", 404);
-    }
-
-    // 3. Unique Email Check (If being changed)
-    if (data.email && data.email !== user.email) {
-      const emailExists = await User.findOne({
-        where: { email: data.email, id: { [Op.ne]: userId } },
-      });
-      if (emailExists) {
-        throw new AppError("Email already in use by another user", 409);
+    const transaction = await sequelize.transaction();
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new AppError("User not found", 404);
       }
+
+      const oldDesignationId = user.designation_id;
+      const isDesignationChanging =
+        data.designationId && data.designationId !== user.designation_id;
+
+      if (data.departmentId) {
+        const dept = await Department.findByPk(data.departmentId, {
+          transaction,
+        });
+        if (!dept) throw new AppError("Department not found", 404);
+      }
+
+      if (data.designationId) {
+        const desig = await Designation.findByPk(data.designationId, {
+          transaction,
+        });
+        if (!desig) throw new AppError("Designation not found", 404);
+      }
+
+      if (data.email && data.email !== user.email) {
+        const emailExists = await User.findOne({
+          where: { email: data.email, id: { [Op.ne]: userId } },
+          transaction,
+        });
+        if (emailExists) {
+          throw new AppError("Email already in use by another user", 409);
+        }
+      }
+
+      Object.assign(user, {
+        full_name: data.fullName || user.full_name,
+        email: data.email !== undefined ? data.email : user.email,
+        system_role: data.systemRole || user.system_role,
+        designation_id: data.designationId || user.designation_id,
+        department_id: data.departmentId || user.department_id,
+        is_active: data.isActive !== undefined ? data.isActive : user.is_active,
+      });
+
+      if (data.password) {
+        user.password = data.password;
+      }
+
+      await user.save({ transaction });
+
+      if (isDesignationChanging) {
+        const remainingUsersCount = await User.count({
+          where: { designation_id: oldDesignationId },
+          transaction,
+        });
+
+        if (remainingUsersCount === 0) {
+          await Designation.update(
+            { level: 50 },
+            { where: { id: oldDesignationId }, transaction },
+          );
+        }
+      }
+
+      await transaction.commit(); // 6. Commit
+
+      await user.reload({ include: ["department", "designation"] });
+      return new UserResponseDto(user);
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
     }
-
-    // 4. Update Fields
-    // Using Object.assign to copy only provided fields
-    Object.assign(user, {
-      full_name: data.fullName || user.full_name,
-      email: data.email !== undefined ? data.email : user.email,
-      system_role: data.systemRole || user.system_role,
-      designation_id: data.designationId || user.designation_id,
-      department_id: data.departmentId || user.department_id,
-      is_active: data.isActive !== undefined ? data.isActive : user.is_active,
-    });
-
-    // Handle Password explicitly (to trigger Sequelize 'changed' hook)
-    if (data.password) {
-      user.password = data.password;
-    }
-
-    await user.save(); // Hooks in User.js will hash password if needed
-
-    // 5. Reload for Relationship Data
-    await user.reload({ include: ["department", "designation"] });
-
-    return new UserResponseDto(user);
   }
 
   async getAllUsers(currentUserId) {
