@@ -160,7 +160,7 @@ router.get("/:id/history", FileController.getFileHistory);
  *                 items:
  *                   type: string
  *                   format: binary
- *                 description: Extra supporting documents (Max 5)
+ *                 description: Extra supporting documents (Max 10)
  *     responses:
  *       '201':
  *         description: File created successfully
@@ -173,9 +173,134 @@ router.post(
   restrictTo(ROLES.STAFF, ROLES.BOARD_MEMBER),
   upload.fields([
     { name: "puc", maxCount: 1 }, // The Main Letter (Mandatory)
-    { name: "attachments", maxCount: 5 }, // Supporting Docs (Optional, max 5)
+    { name: "attachments", maxCount: 10 }, // Supporting Docs (Optional, max 10)
   ]),
   FileController.createFile,
+);
+
+/**
+ * @openapi
+ * /files/{id}/sign:
+ *   post:
+ *     summary: Upload signed document (President only)
+ *     description: Requires Board Member role; service layer enforces President designation.
+ *     tags:
+ *       - Files
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: File ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - signed_doc
+ *             properties:
+ *               signed_doc:
+ *                 type: string
+ *                 format: binary
+ *                 description: Signed PDF document
+ *     responses:
+ *       '200':
+ *         description: Signed document uploaded
+ *       '400':
+ *         description: Signed document missing or validation error
+ *       '403':
+ *         description: Forbidden
+ *       '404':
+ *         description: File not found
+ */
+router.post(
+  "/:id/sign",
+  restrictTo(ROLES.BOARD_MEMBER),
+  upload.single("signed_doc"),
+  FileController.uploadSignedDoc,
+);
+
+/**
+ * @openapi
+ * /files/{id}/attachment:
+ *   post:
+ *     summary: Add extra attachment to a file (Board/President)
+ *     tags:
+ *       - Files
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: File ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - attachments
+ *             properties:
+ *               attachments:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Attachment PDFs (Max 10)
+ *     responses:
+ *       '201':
+ *         description: Attachment added
+ *       '400':
+ *         description: Attachment missing or validation error
+ *       '403':
+ *         description: Forbidden
+ *       '404':
+ *         description: File not found
+ */
+router.post(
+  "/:id/attachment",
+  restrictTo(ROLES.BOARD_MEMBER),
+  upload.array("attachments", 10),
+  FileController.addAttachment,
+);
+
+/**
+ * @openapi
+ * /files/attachment/{attachmentId}:
+ *   delete:
+ *     summary: Remove an attachment (Board/President)
+ *     tags:
+ *       - Files
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: attachmentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Attachment ID
+ *     responses:
+ *       '200':
+ *         description: Attachment removed
+ *       '403':
+ *         description: Forbidden
+ *       '404':
+ *         description: Attachment not found
+ */
+router.delete(
+  "/attachment/:attachmentId",
+  restrictTo(ROLES.BOARD_MEMBER),
+  FileController.removeAttachment,
 );
 
 export default router;

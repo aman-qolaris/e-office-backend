@@ -5,7 +5,11 @@ class MoveFileRequestDto {
   static schema = Joi.object({
     receiverId: Joi.number()
       .integer()
-      .required()
+      .when("action", {
+        is: MOVEMENT_ACTIONS.VERIFY,
+        then: Joi.optional(),
+        otherwise: Joi.required(),
+      })
       .messages({ "any.required": "Receiver (Target User) is required" }),
 
     action: Joi.string()

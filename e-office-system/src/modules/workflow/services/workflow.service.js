@@ -38,6 +38,47 @@ class WorkflowService {
         );
       }
 
+      if (moveData.action === MOVEMENT_ACTIONS.VERIFY) {
+        // Only Board Members and President can verify
+        const verifiers = [ROLES.BOARD_MEMBER]; // President is also a Board Member role in some contexts, or we check designation
+        const isPresident =
+          currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
+
+        if (!verifiers.includes(currentUser.system_role) && !isPresident) {
+          throw new AppError(
+            "Only Board Members or President can verify files.",
+            403,
+          );
+        }
+
+        // Special Check: President must upload signed doc before verifying
+        if (isPresident && !file.signed_doc_url) {
+          throw new AppError(
+            "President cannot verify without uploading the Signed Document first.",
+            400,
+          );
+        }
+
+        file.is_verified = true;
+        await file.save({ transaction });
+
+        // Audit Log
+        await FileMovement.create(
+          {
+            file_id: file.id,
+            sent_by: currentUser.id,
+            sent_to: currentUser.id, // Self
+            action: MOVEMENT_ACTIONS.VERIFY,
+            remarks: moveData.remarks || "File Verified",
+            is_read: true,
+          },
+          { transaction },
+        );
+
+        await transaction.commit();
+        return { message: "File verified successfully." };
+      }
+
       // --- NEW: FETCH RECEIVER DETAILS ---
       const receiver = await User.findByPk(moveData.receiverId, {
         include: [{ model: Designation, as: "designation" }],
@@ -46,60 +87,63 @@ class WorkflowService {
         throw new AppError("Receiver not found", 404);
       }
 
-      // --- NEW: HIERARCHY RULE 1 (Staff cannot skip to President) ---
-      if (currentUser.system_role === ROLES.STAFF) {
-        if (
-          receiver.designation &&
-          receiver.designation.name === DESIGNATIONS.PRESIDENT
-        ) {
+      if (receiver.id === currentUser.id) {
+        throw new AppError("You cannot send or move a file to yourself.", 400);
+      }
+
+      const isReceiverPresident =
+        receiver.designation?.name === DESIGNATIONS.PRESIDENT;
+
+      // --- RULE 1: Staff cannot send to President ---
+      if (currentUser.system_role === ROLES.STAFF && isReceiverPresident) {
+        throw new AppError(
+          "Hierarchy Violation: Staff cannot send files directly to the President.",
+          403,
+        );
+      }
+
+      // --- RULE 2: Board Member must VERIFY before sending to President ---
+      if (
+        currentUser.system_role === ROLES.BOARD_MEMBER &&
+        isReceiverPresident
+      ) {
+        if (!file.is_verified) {
           throw new AppError(
-            "Hierarchy Violation: Staff members cannot send files directly to the President. Please route through a Board Member.",
-            403,
+            "Verification Required: You must VERIFY this file before forwarding to the President.",
+            400,
           );
         }
       }
 
-      // --- NEW: HIERARCHY RULE 2 (Cannot send to self) ---
-      if (
-        currentUser.id === receiver.id &&
-        moveData.action === MOVEMENT_ACTIONS.FORWARD
-      ) {
-        // Note: We allow sending to self if it's 'APPROVE' (sometimes acts as a self-close),
-        // but typically FORWARD to self is useless.
-        throw new AppError("You cannot forward a file to yourself.", 400);
-      }
+      // --- RULE 3: President must VERIFY before Approval/Rejection ---
+      const isPresident =
+        currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
 
-      // 3. Role Validation Check
-      // If action is APPROVE or REJECT, allow only ADMIN or BOARD_MEMBER
       if (
-        moveData.action === MOVEMENT_ACTIONS.APPROVE ||
-        moveData.action === MOVEMENT_ACTIONS.REJECT
+        isPresident &&
+        (moveData.action === MOVEMENT_ACTIONS.APPROVE ||
+          moveData.action === MOVEMENT_ACTIONS.FORWARD)
       ) {
-        const allowedRoles = [ROLES.ADMIN, ROLES.BOARD_MEMBER];
-        if (!allowedRoles.includes(currentUser.system_role)) {
+        if (!file.is_verified) {
           throw new AppError(
-            `Staff members cannot perform ${moveData.action}. You can only FORWARD or REVERT.`,
-            403,
+            "Verification Required: President must verify (and sign) before this action.",
+            400,
           );
         }
       }
 
-      // --- NEW: SECURITY PIN CHECK ---
-      // We only demand a PIN for high-security actions (Approve/Reject)
+      // --- SECURITY PIN CHECK (For Verify/Approve/Reject) ---
       const sensitiveActions = [
         MOVEMENT_ACTIONS.APPROVE,
         MOVEMENT_ACTIONS.REJECT,
+        MOVEMENT_ACTIONS.VERIFY,
       ];
 
       if (sensitiveActions.includes(moveData.action)) {
-        // A. Check if PIN was sent in the request body
         if (!moveData.pin) {
           throw new AppError("Security PIN is required for this action.", 400);
         }
-
-        // B. Verify the PIN using the User Model method we created
         const isPinValid = await currentUser.validatePin(moveData.pin);
-
         if (!isPinValid) {
           throw new AppError("Invalid Security PIN.", 401);
         }
@@ -119,12 +163,10 @@ class WorkflowService {
           newStatus = FILE_STATUS.REVERTED;
           break;
         case MOVEMENT_ACTIONS.FORWARD:
-          // If it was DRAFT, now it is IN_PROGRESS
-          if (file.status === FILE_STATUS.DRAFT) {
-            newStatus = FILE_STATUS.IN_PROGRESS;
-          }
-          // If it was REVERTED, and we fix & forward, it becomes IN_PROGRESS again
-          if (file.status === FILE_STATUS.REVERTED) {
+          if (
+            file.status === FILE_STATUS.DRAFT ||
+            file.status === FILE_STATUS.REVERTED
+          ) {
             newStatus = FILE_STATUS.IN_PROGRESS;
           }
           break;
@@ -134,6 +176,8 @@ class WorkflowService {
       file.current_designation_id = receiver.designation_id; // CRITICAL
       file.current_department_id = receiver.department_id; // CRITICAL
       file.status = newStatus;
+
+      file.is_verified = false;
 
       await file.save({ transaction });
 

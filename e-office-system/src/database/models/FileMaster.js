@@ -72,6 +72,16 @@ FileMaster.init(
       type: DataTypes.INTEGER,
       allowNull: false, // The Origin Department
     },
+    is_verified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment: "Must be true before Forwarding (for Board/President)",
+    },
+    signed_doc_url: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: "Path to the President's signed PDF",
+    },
   },
   {
     sequelize,
