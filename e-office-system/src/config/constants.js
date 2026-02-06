@@ -45,4 +45,5 @@ export const MOVEMENT_ACTIONS = {
   REVERT: "REVERT", // Send back for correction
   APPROVE: "APPROVE", // Final approval
   REJECT: "REJECT", // Final rejection
+  VERIFY: "VERIFY",
 };

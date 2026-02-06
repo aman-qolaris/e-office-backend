@@ -8,7 +8,12 @@ import {
   Department,
   Designation, // Ensure Designation is imported
 } from "../../../database/models/index.js";
-import { FILE_STATUS, ROLES } from "../../../config/constants.js";
+import {
+  FILE_STATUS,
+  ROLES,
+  MOVEMENT_ACTIONS,
+  DESIGNATIONS,
+} from "../../../config/constants.js";
 import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import AppError from "../../../utils/AppError.js";
 import FileResponseDto from "../dtos/response/FileResponseDto.js";
@@ -61,6 +66,8 @@ class FileService {
           current_holder_id: user.id,
           current_designation_id: user.designation_id,
           current_department_id: user.department_id,
+
+          is_verified: false,
         },
         { transaction },
       );
@@ -114,9 +121,9 @@ class FileService {
           { model: Department, as: "department" },
           { model: User, as: "creator" },
           { model: FileAttachment, as: "attachments" },
-          // 🚨 ADDED: Include Position Details so DTO works immediately
           { model: Designation, as: "currentDesignation" },
           { model: Department, as: "currentDepartment" },
+          { model: User, as: "currentHolder" },
         ],
       });
 
@@ -125,6 +132,115 @@ class FileService {
       await transaction.rollback();
       throw error;
     }
+  }
+
+  async uploadSignedDoc(fileId, fileBuffer, currentUser) {
+    if (currentUser.designation?.name !== DESIGNATIONS.PRESIDENT) {
+      throw new AppError(
+        "Only the President can upload a signed document.",
+        403,
+      );
+    }
+
+    const file = await FileMaster.findByPk(fileId);
+    if (!file) throw new AppError("File not found", 404);
+
+    if (file.current_holder_id !== currentUser.id) {
+      throw new AppError("You do not currently hold this file.", 403);
+    }
+
+    // 🚨 LOCK CHECK
+    if (file.status === FILE_STATUS.APPROVED) {
+      throw new AppError("File is LOCKED. Cannot upload documents.", 400);
+    }
+
+    const fileName = `${file.file_number.replace(/\//g, "-")}_SIGNED.pdf`;
+    const objectName = `files/signed/${fileName}`;
+
+    await minioClient.putObject(BUCKET_NAME, objectName, fileBuffer);
+
+    file.signed_doc_url = objectName;
+    await file.save();
+
+    return {
+      message: "Signed document uploaded successfully.",
+      url: objectName,
+    };
+  }
+
+  async addAttachment(fileId, files, currentUser) {
+    const fileMaster = await FileMaster.findByPk(fileId);
+    if (!fileMaster) throw new AppError("File not found", 404);
+
+    // Permission Check
+    if (fileMaster.current_holder_id !== currentUser.id) {
+      throw new AppError(
+        "You can only add attachments to files you hold.",
+        403,
+      );
+    }
+
+    // 🚨 LOCK CHECK
+    if (fileMaster.status === FILE_STATUS.APPROVED) {
+      throw new AppError("File is LOCKED. Cannot add attachments.", 400);
+    }
+
+    if (!Array.isArray(files) || files.length === 0) {
+      throw new AppError("At least one attachment file is required.", 400);
+    }
+
+    const year = new Date().getFullYear();
+
+    const createdAttachments = [];
+    for (const file of files) {
+      const attExt = path.extname(file.originalname);
+      const attSuffix = `${Date.now()}-${Math.round(Math.random() * 1e4)}`;
+      const attObjectName = `files/${year}/attachments/${attSuffix}${attExt}`;
+
+      await minioClient.putObject(BUCKET_NAME, attObjectName, file.buffer);
+
+      const newAttachment = await FileAttachment.create({
+        file_id: fileMaster.id,
+        original_name: file.originalname,
+        file_key: attObjectName,
+        file_url: attObjectName,
+        mime_type: file.mimetype,
+        file_size: file.size,
+      });
+
+      createdAttachments.push(newAttachment);
+    }
+
+    return createdAttachments;
+  }
+
+  async removeAttachment(attachmentId, currentUser) {
+    const attachment = await FileAttachment.findByPk(attachmentId, {
+      include: [{ model: FileMaster, as: "masterFile" }],
+    });
+
+    if (!attachment) throw new AppError("Attachment not found", 404);
+
+    // Permission Check
+    if (attachment.masterFile.current_holder_id !== currentUser.id) {
+      throw new AppError(
+        "You can only remove attachments from files you hold.",
+        403,
+      );
+    }
+
+    // 🚨 LOCK CHECK
+    if (attachment.masterFile.status === FILE_STATUS.APPROVED) {
+      throw new AppError("File is LOCKED. Cannot remove attachments.", 400);
+    }
+
+    // Delete from MinIO (Optional: Keep it for audit? Here we delete for now)
+    // await minioClient.removeObject(BUCKET_NAME, attachment.file_key);
+    // Note: Usually better to soft-delete in DB, but we will hard delete DB entry.
+
+    await attachment.destroy();
+
+    return { message: "Attachment removed successfully" };
   }
 
   async getInbox(user) {
@@ -147,6 +263,12 @@ class FileService {
         // 🚨 ADDED: Must include these so DTO knows the current location
         { model: Designation, as: "currentDesignation", attributes: ["name"] },
         { model: Department, as: "currentDepartment", attributes: ["name"] },
+        {
+          model: User,
+          as: "currentHolder",
+          attributes: ["full_name"],
+        },
+        { model: FileAttachment, as: "attachments" },
       ],
       order: [["updatedAt", "DESC"]],
     });
@@ -174,6 +296,7 @@ class FileService {
         // 🚨 ADDED: Crucial for Outbox to see "Where is my file now?"
         { model: Designation, as: "currentDesignation", attributes: ["name"] },
         { model: Department, as: "currentDepartment", attributes: ["name"] },
+        { model: FileAttachment, as: "attachments" },
         {
           model: User,
           as: "creator",
@@ -291,6 +414,9 @@ class FileService {
         current_designation_id: user.designation_id,
         current_department_id: user.department_id,
       },
+      status: {
+        [Op.notIn]: [FILE_STATUS.APPROVED, FILE_STATUS.REJECTED],
+      },
     });
 
     const createdCount = await FileMaster.count({
@@ -311,11 +437,19 @@ class FileService {
       },
     });
 
+    const revertedCount = await FileMaster.count({
+      where: {
+        created_by: user.id,
+        status: FILE_STATUS.REVERTED,
+      },
+    });
+
     return {
       pending: pendingCount,
       created: createdCount,
       approved: approvedCount,
       rejected: rejectedCount,
+      reverted: revertedCount,
     };
   }
 }

@@ -36,6 +36,68 @@ class FileController {
     }
   }
 
+  async uploadSignedDoc(req, res, next) {
+    try {
+      // Frontend must send field name: 'signed_doc'
+      if (!req.file) {
+        throw new AppError("Signed Document PDF is required.", 400);
+      }
+
+      const { id } = req.params; // File ID
+      const result = await FileService.uploadSignedDoc(
+        id,
+        req.file.buffer, // Buffer from MemoryStorage
+        req.user,
+      );
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        url: result.url,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async addAttachment(req, res, next) {
+    try {
+      // Frontend must send field name: 'attachments'
+      if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+        throw new AppError("At least one attachment file is required.", 400);
+      }
+
+      const { id } = req.params; // File ID
+      const attachments = await FileService.addAttachment(
+        id,
+        req.files,
+        req.user,
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Attachments added successfully",
+        data: attachments,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async removeAttachment(req, res, next) {
+    try {
+      const { attachmentId } = req.params;
+      const result = await FileService.removeAttachment(attachmentId, req.user);
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getInbox(req, res, next) {
     try {
       // "req.user.id" comes from the 'protect' middleware (the token)
