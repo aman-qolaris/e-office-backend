@@ -39,7 +39,7 @@ class FileController {
   async getInbox(req, res, next) {
     try {
       // "req.user.id" comes from the 'protect' middleware (the token)
-      const files = await FileService.getInbox(req.user.id);
+      const files = await FileService.getInbox(req.user);
 
       res.status(200).json({
         success: true,
@@ -54,7 +54,7 @@ class FileController {
 
   async getOutbox(req, res, next) {
     try {
-      const files = await FileService.getOutbox(req.user.id);
+      const files = await FileService.getOutbox(req.user);
       res.status(200).json({
         success: true,
         message: "Outbox fetched successfully",
@@ -84,7 +84,7 @@ class FileController {
   async searchFiles(req, res, next) {
     try {
       // Pass the entire query object (text, status, priority, etc.) to the service
-      const files = await FileService.searchFiles(req.query);
+      const files = await FileService.searchFiles(req.query, req.user);
 
       res.status(200).json({
         success: true,
@@ -99,7 +99,7 @@ class FileController {
 
   async getDashboardStats(req, res, next) {
     try {
-      const stats = await FileService.getDashboardStats(req.user.id);
+      const stats = await FileService.getDashboardStats(req.user);
       res.status(200).json({
         success: true,
         message: "Dashboard stats fetched successfully",

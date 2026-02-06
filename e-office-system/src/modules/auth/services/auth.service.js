@@ -79,7 +79,7 @@ class AuthService {
     }
 
     // 2. Save PIN (The Model Hook will auto-hash this!)
-    user.security_pin = pin;
+    user.security_pin = newPin;
     await user.save();
 
     return { message: "Security PIN set successfully" };
