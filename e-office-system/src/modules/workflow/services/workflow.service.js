@@ -145,7 +145,8 @@ class WorkflowService {
         }
         const isPinValid = await currentUser.validatePin(moveData.pin);
         if (!isPinValid) {
-          throw new AppError("Invalid Security PIN.", 401);
+          // 🔴 CRITICAL FIX: Changed from 401 to 400 to prevent auto-logout
+          throw new AppError("Invalid Security PIN. Please check and try again.", 400);
         }
       }
 

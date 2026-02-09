@@ -130,7 +130,7 @@ class UserService {
         id: { [Op.ne]: currentUserId }, // Exclude the person requesting (Self)
         is_active: true, // Only show active staff
       },
-      attributes: ["id", "full_name", "email", "system_role"], // Fetch minimal data
+      attributes: ["id", "full_name", "email", "system_role","is_active"], // Fetch minimal data
       include: [
         {
           model: Designation,
