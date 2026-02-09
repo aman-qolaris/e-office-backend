@@ -19,7 +19,7 @@ router.use(protect);
  * @openapi
  * /workflow/files/{id}/move:
  *   post:
- *     summary: Move a file (Forward, Revert, or Approve)
+ *     summary: Move a file to another user or verify it
  *     tags:
  *       - Workflow
  *     security:
@@ -38,18 +38,16 @@ router.use(protect);
  *           schema:
  *             type: object
  *             required:
- *               - receiverId
- *               - action
  *               - remarks
  *             properties:
  *               receiverId:
  *                 type: integer
- *                 description: Target User ID (Who receives the file)
+ *                 description: Target User ID (required for actions other than VERIFY)
  *                 example: 2
  *               action:
  *                 type: string
  *                 description: The movement action to perform
- *                 enum: [FORWARD, REVERT, APPROVE, REJECT]
+ *                 enum: [CREATED, FORWARD, VERIFY]
  *                 example: "FORWARD"
  *               remarks:
  *                 type: string
@@ -57,11 +55,11 @@ router.use(protect);
  *                 example: "Forwarding to President for final approval."
  *               pin:
  *                 type: string
- *                 description: 4-digit security PIN (Required for APPROVE/REJECT)
+ *                 description: Optional 4-digit security PIN (validated only if the backend enforces it for specific actions)
  *                 example: "1234"
  *     responses:
  *       '200':
- *         description: File moved successfully
+ *         description: File moved/verified successfully
  *         content:
  *           application/json:
  *             schema:
@@ -72,13 +70,30 @@ router.use(protect);
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "File forwarded successfully"
+ *                   example: "File moved successfully"
+ *                 data:
+ *                   oneOf:
+ *                     - type: object
+ *                       properties:
+ *                         message:
+ *                           type: string
+ *                           example: "File moved successfully"
+ *                         newHolderId:
+ *                           type: integer
+ *                           example: 2
+ *                     - type: object
+ *                       properties:
+ *                         message:
+ *                           type: string
+ *                           example: "File verified successfully."
  *       '400':
- *         description: Validation Error (Invalid Action or Missing Remarks)
+ *         description: Validation/Business Rule Error (e.g., missing remarks, receiverId required, verification rules)
  *       '403':
- *         description: Unauthorized (Wrong PIN or Not Allowed)
+ *         description: Forbidden (role/hierarchy violation or not allowed to move this file)
  *       '404':
- *         description: File not found
+ *         description: File not found (or receiver not found)
+ *       '500':
+ *         description: Internal Server Error
  */
 
 // POST /api/v1/workflow/files/:id/move

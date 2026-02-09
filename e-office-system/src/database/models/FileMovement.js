@@ -34,7 +34,6 @@ FileMovement.init(
     action: {
       type: DataTypes.ENUM(...Object.values(MOVEMENT_ACTIONS)),
       allowNull: false,
-      defaultValue: MOVEMENT_ACTIONS.FORWARD,
     },
 
     // User's comment ("Please check budget")

@@ -21,10 +21,6 @@ export const DESIGNATIONS = {
 
 export const FILE_STATUS = {
   DRAFT: "DRAFT",
-  IN_PROGRESS: "IN_PROGRESS",
-  APPROVED: "APPROVED",
-  REJECTED: "REJECTED",
-  REVERTED: "REVERTED",
 };
 
 export const PRIORITY = {
@@ -41,9 +37,6 @@ export const FILE_TYPES = {
 
 export const MOVEMENT_ACTIONS = {
   CREATED: "CREATED",
-  FORWARD: "FORWARD", // Standard move
-  REVERT: "REVERT", // Send back for correction
-  APPROVE: "APPROVE", // Final approval
-  REJECT: "REJECT", // Final rejection
+  FORWARD: "FORWARD",
   VERIFY: "VERIFY",
 };

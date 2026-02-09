@@ -8,12 +8,7 @@ import {
   Department,
   Designation, // Ensure Designation is imported
 } from "../../../database/models/index.js";
-import {
-  FILE_STATUS,
-  ROLES,
-  MOVEMENT_ACTIONS,
-  DESIGNATIONS,
-} from "../../../config/constants.js";
+import { FILE_STATUS, ROLES, DESIGNATIONS } from "../../../config/constants.js";
 import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import AppError from "../../../utils/AppError.js";
 import FileResponseDto from "../dtos/response/FileResponseDto.js";
@@ -149,11 +144,6 @@ class FileService {
       throw new AppError("You do not currently hold this file.", 403);
     }
 
-    // 🚨 LOCK CHECK
-    if (file.status === FILE_STATUS.APPROVED) {
-      throw new AppError("File is LOCKED. Cannot upload documents.", 400);
-    }
-
     const fileName = `${file.file_number.replace(/\//g, "-")}_SIGNED.pdf`;
     const objectName = `files/signed/${fileName}`;
 
@@ -178,11 +168,6 @@ class FileService {
         "You can only add attachments to files you hold.",
         403,
       );
-    }
-
-    // 🚨 LOCK CHECK
-    if (fileMaster.status === FILE_STATUS.APPROVED) {
-      throw new AppError("File is LOCKED. Cannot add attachments.", 400);
     }
 
     if (!Array.isArray(files) || files.length === 0) {
@@ -229,15 +214,6 @@ class FileService {
       );
     }
 
-    // 🚨 LOCK CHECK
-    if (attachment.masterFile.status === FILE_STATUS.APPROVED) {
-      throw new AppError("File is LOCKED. Cannot remove attachments.", 400);
-    }
-
-    // Delete from MinIO (Optional: Keep it for audit? Here we delete for now)
-    // await minioClient.removeObject(BUCKET_NAME, attachment.file_key);
-    // Note: Usually better to soft-delete in DB, but we will hard delete DB entry.
-
     await attachment.destroy();
 
     return { message: "Attachment removed successfully" };
@@ -276,7 +252,7 @@ class FileService {
     return files.map((file) => new FileResponseDto(file));
   }
 
-async getOutbox(user) {
+  async getOutbox(user) {
     // 1. Find all files where the user was a SENDER in the movement history
     const movements = await FileMovement.findAll({
       attributes: ["file_id"],
@@ -295,7 +271,7 @@ async getOutbox(user) {
     const files = await FileMaster.findAll({
       where: {
         id: { [Op.in]: sentFileIds }, // Must be in my sent list
-        
+
         // AND Logic: The file must NOT be currently with me
         [Op.or]: [
           { current_designation_id: { [Op.ne]: user.designation_id } },
@@ -383,7 +359,7 @@ async getOutbox(user) {
 
   async searchFiles(query, user) {
     // Changed arg name to 'query' to match usage
-    const { text, status, priority, departmentId } = query;
+    const { text, status, priority } = query;
     const whereClause = {
       // 🚨 SECURITY: Force User's Department (unless you are implementing Global Admin Search later)
       department_id: user.department_id,
