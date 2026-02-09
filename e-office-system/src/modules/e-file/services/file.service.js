@@ -276,12 +276,27 @@ class FileService {
     return files.map((file) => new FileResponseDto(file));
   }
 
-  async getOutbox(user) {
+async getOutbox(user) {
+    // 1. Find all files where the user was a SENDER in the movement history
+    const movements = await FileMovement.findAll({
+      attributes: ["file_id"],
+      where: { sent_by: user.id },
+      raw: true,
+    });
+
+    // Extract unique File IDs
+    const sentFileIds = [...new Set(movements.map((m) => m.file_id))];
+
+    if (sentFileIds.length === 0) {
+      return [];
+    }
+
+    // 2. Fetch the actual files, BUT exclude ones that are currently back with the user
     const files = await FileMaster.findAll({
       where: {
-        created_by: user.id,
-        department_id: user.department_id,
-        // ✅ CORRECT: Using Position Logic (Not in my inbox position)
+        id: { [Op.in]: sentFileIds }, // Must be in my sent list
+        
+        // AND Logic: The file must NOT be currently with me
         [Op.or]: [
           { current_designation_id: { [Op.ne]: user.designation_id } },
           { current_department_id: { [Op.ne]: user.department_id } },
@@ -293,7 +308,6 @@ class FileService {
           as: "currentHolder",
           attributes: ["full_name"],
         },
-        // 🚨 ADDED: Crucial for Outbox to see "Where is my file now?"
         { model: Designation, as: "currentDesignation", attributes: ["name"] },
         { model: Department, as: "currentDepartment", attributes: ["name"] },
         { model: FileAttachment, as: "attachments" },

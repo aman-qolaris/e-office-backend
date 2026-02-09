@@ -6,7 +6,8 @@ class FileResponseDto {
     this.priority = file.priority;
     this.type = file.type;
     this.status = file.status;
-
+    this.signedDocUrl = file.signed_doc_url;
+    this.isVerified = file.is_verified;
     // File Details
     this.pucUrl = file.puc_url;
     this.originalName = file.original_filename;
