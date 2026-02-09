@@ -36,30 +36,6 @@ class FileController {
     }
   }
 
-  async uploadSignedDoc(req, res, next) {
-    try {
-      // Frontend must send field name: 'signed_doc'
-      if (!req.file) {
-        throw new AppError("Signed Document PDF is required.", 400);
-      }
-
-      const { id } = req.params; // File ID
-      const result = await FileService.uploadSignedDoc(
-        id,
-        req.file.buffer, // Buffer from MemoryStorage
-        req.user,
-      );
-
-      res.status(200).json({
-        success: true,
-        message: result.message,
-        url: result.url,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
   async addAttachment(req, res, next) {
     try {
       // Frontend must send field name: 'attachments'
@@ -205,26 +181,6 @@ class FileController {
       const { attachmentId } = req.params;
       const { stream, filename, mimeType } =
         await FileService.downloadAttachment(attachmentId, req.user);
-
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${filename}"`,
-      );
-      res.setHeader("Content-Type", mimeType);
-      stream.pipe(res);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  /**
-   * Download Signed Document (President's Copy)
-   */
-  async downloadSignedDoc(req, res, next) {
-    try {
-      const { id } = req.params;
-      const { stream, filename, mimeType } =
-        await FileService.downloadSignedDoc(id, req.user);
 
       res.setHeader(
         "Content-Disposition",

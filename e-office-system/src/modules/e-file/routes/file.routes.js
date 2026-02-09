@@ -1,9 +1,7 @@
 import { Router } from "express";
 import FileController from "../controllers/file.controller.js";
 import { protect } from "../../../middlewares/auth.middleware.js";
-import { restrictTo } from "../../../middlewares/rbac.middleware.js";
 import { upload } from "../../../middlewares/upload.middleware.js";
-import { ROLES } from "../../../config/constants.js";
 
 const router = Router();
 
@@ -47,6 +45,8 @@ router.use(protect);
  *                   type: array
  *                   items:
  *                     type: object
+ *       '401':
+ *         description: Unauthorized
  */
 
 router.get("/inbox", FileController.getInbox);
@@ -81,6 +81,8 @@ router.get("/inbox", FileController.getInbox);
  *                   type: array
  *                   items:
  *                     type: object
+ *       '401':
+ *         description: Unauthorized
  */
 router.get("/outbox", FileController.getOutbox);
 
@@ -103,13 +105,17 @@ router.get("/outbox", FileController.getOutbox);
  *         name: status
  *         schema:
  *           type: string
- *           enum: [DRAFT]
- *         description: Filter by file status (currently supported: DRAFT)
+ *           enum:
+ *             - DRAFT
+ *         description: "Filter by file status (currently supported: DRAFT)"
  *       - in: query
  *         name: priority
  *         schema:
  *           type: string
- *           enum: [LOW, MEDIUM, HIGH]
+ *           enum:
+ *             - LOW
+ *             - MEDIUM
+ *             - HIGH
  *     responses:
  *       '200':
  *         description: Search results (department-scoped)
@@ -131,6 +137,8 @@ router.get("/outbox", FileController.getOutbox);
  *                   type: array
  *                   items:
  *                     type: object
+ *       '401':
+ *         description: Unauthorized
  */
 router.get("/search", FileController.searchFiles);
 
@@ -166,15 +174,10 @@ router.get("/search", FileController.searchFiles);
  *                     created:
  *                       type: integer
  *                       example: 10
- *                     approved:
- *                       type: integer
- *                       example: 0
- *                     rejected:
- *                       type: integer
- *                       example: 0
- *                     reverted:
- *                       type: integer
- *                       example: 0
+ *       '500':
+ *         description: Internal Server Error
+ *       '401':
+ *         description: Unauthorized
  */
 router.get("/stats", FileController.getDashboardStats);
 
@@ -210,6 +213,10 @@ router.get("/stats", FileController.getDashboardStats);
  *                   example: File history fetched successfully
  *                 data:
  *                   type: object
+ *       '401':
+ *         description: Unauthorized
+ *       '404':
+ *         description: File not found
  */
 router.get("/:id/history", FileController.getFileHistory);
 
@@ -276,13 +283,14 @@ router.get("/:id/history", FileController.getFileHistory);
  *                   type: object
  *       '400':
  *         description: Missing PUC or validation error
- *       '403':
- *         description: Forbidden
+ *       '401':
+ *         description: Unauthorized
+ *       '500':
+ *         description: Internal Server Error
  */
 
 router.post(
   "/",
-  restrictTo(ROLES.STAFF, ROLES.BOARD_MEMBER),
   upload.fields([
     { name: "puc", maxCount: 1 }, // The Main Letter (Mandatory)
     { name: "attachments", maxCount: 10 }, // Supporting Docs (Optional, max 10)
@@ -292,70 +300,9 @@ router.post(
 
 /**
  * @openapi
- * /files/{id}/sign:
- *   post:
- *     summary: Upload signed document (President only)
- *     description: Requires BOARD_MEMBER system role; service layer enforces PRESIDENT designation and current-holder checks.
- *     tags:
- *       - Files
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: File ID
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             required:
- *               - signed_doc
- *             properties:
- *               signed_doc:
- *                 type: string
- *                 format: binary
- *                 description: Signed PDF document
- *     responses:
- *       '200':
- *         description: Signed document uploaded
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Signed document uploaded successfully.
- *                 url:
- *                   type: string
- *                   description: MinIO object key/path
- *       '400':
- *         description: Signed document missing or validation error
- *       '403':
- *         description: Forbidden
- *       '404':
- *         description: File not found
- */
-router.post(
-  "/:id/sign",
-  restrictTo(ROLES.BOARD_MEMBER),
-  upload.single("signed_doc"),
-  FileController.uploadSignedDoc,
-);
-
-/**
- * @openapi
  * /files/{id}/attachment:
  *   post:
- *     summary: Add extra attachment to a file (Board/President)
+ *     summary: Add extra attachment(s) to a file
  *     tags:
  *       - Files
  *     security:
@@ -402,14 +349,15 @@ router.post(
  *                     type: object
  *       '400':
  *         description: Attachment missing or validation error
+ *       '401':
+ *         description: Unauthorized
  *       '403':
- *         description: Forbidden
+ *         description: Forbidden (only the current holder can add attachments)
  *       '404':
  *         description: File not found
  */
 router.post(
   "/:id/attachment",
-  restrictTo(ROLES.BOARD_MEMBER),
   upload.array("attachments", 10),
   FileController.addAttachment,
 );
@@ -418,7 +366,7 @@ router.post(
  * @openapi
  * /files/attachment/{attachmentId}:
  *   delete:
- *     summary: Remove an attachment (Board/President)
+ *     summary: Remove an attachment
  *     tags:
  *       - Files
  *     security:
@@ -445,15 +393,13 @@ router.post(
  *                   type: string
  *                   example: Attachment removed successfully
  *       '403':
- *         description: Forbidden
+ *         description: Forbidden (only the current holder can remove attachments)
+ *       '401':
+ *         description: Unauthorized
  *       '404':
  *         description: Attachment not found
  */
-router.delete(
-  "/attachment/:attachmentId",
-  restrictTo(ROLES.BOARD_MEMBER),
-  FileController.removeAttachment,
-);
+router.delete("/attachment/:attachmentId", FileController.removeAttachment);
 
 /**
  * @openapi
@@ -485,8 +431,12 @@ router.delete(
  *               format: binary
  *       '403':
  *         description: Forbidden
+ *       '401':
+ *         description: Unauthorized
  *       '404':
  *         description: File or PUC not found
+ *       '500':
+ *         description: Internal Server Error
  */
 router.get("/:id/download-puc", FileController.downloadPuc);
 
@@ -520,47 +470,16 @@ router.get("/:id/download-puc", FileController.downloadPuc);
  *               format: binary
  *       '403':
  *         description: Forbidden
+ *       '401':
+ *         description: Unauthorized
  *       '404':
  *         description: Attachment not found
+ *       '500':
+ *         description: Internal Server Error
  */
 router.get(
   "/attachment/:attachmentId/download",
   FileController.downloadAttachment,
 );
-
-/**
- * @openapi
- * /files/{id}/download-signed:
- *   get:
- *     summary: Download signed document (President's copy)
- *     tags:
- *       - Files
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: File ID
- *     responses:
- *       '200':
- *         description: Signed document file stream
- *         content:
- *           application/pdf:
- *             schema:
- *               type: string
- *               format: binary
- *           application/octet-stream:
- *             schema:
- *               type: string
- *               format: binary
- *       '403':
- *         description: Forbidden
- *       '404':
- *         description: Signed document not found
- */
-router.get("/:id/download-signed", FileController.downloadSignedDoc);
 
 export default router;

@@ -47,7 +47,7 @@ router.use(protect);
  *               action:
  *                 type: string
  *                 description: The movement action to perform
- *                 enum: [CREATED, FORWARD, VERIFY]
+ *                 enum: [FORWARD, VERIFY]
  *                 example: "FORWARD"
  *               remarks:
  *                 type: string
