@@ -16,10 +16,6 @@ import { Op } from "sequelize";
 
 class FileService {
   async createFile(fileData, user, pucFile, attachments) {
-    if (user?.system_role === ROLES.ADMIN) {
-      throw new AppError("Admins are not allowed to create files.", 403);
-    }
-
     const transaction = await sequelize.transaction();
 
     try {
@@ -63,6 +59,8 @@ class FileService {
           current_department_id: user.department_id,
 
           is_verified: false,
+          verified_by: null,
+          verified_at: null,
         },
         { transaction },
       );
@@ -127,35 +125,6 @@ class FileService {
       await transaction.rollback();
       throw error;
     }
-  }
-
-  async uploadSignedDoc(fileId, fileBuffer, currentUser) {
-    if (currentUser.designation?.name !== DESIGNATIONS.PRESIDENT) {
-      throw new AppError(
-        "Only the President can upload a signed document.",
-        403,
-      );
-    }
-
-    const file = await FileMaster.findByPk(fileId);
-    if (!file) throw new AppError("File not found", 404);
-
-    if (file.current_holder_id !== currentUser.id) {
-      throw new AppError("You do not currently hold this file.", 403);
-    }
-
-    const fileName = `${file.file_number.replace(/\//g, "-")}_SIGNED.pdf`;
-    const objectName = `files/signed/${fileName}`;
-
-    await minioClient.putObject(BUCKET_NAME, objectName, fileBuffer);
-
-    file.signed_doc_url = objectName;
-    await file.save();
-
-    return {
-      message: "Signed document uploaded successfully.",
-      url: objectName,
-    };
   }
 
   async addAttachment(fileId, files, currentUser) {
@@ -245,6 +214,7 @@ class FileService {
           attributes: ["full_name"],
         },
         { model: FileAttachment, as: "attachments" },
+        { model: User, as: "verifier", attributes: ["full_name"] },
       ],
       order: [["updatedAt", "DESC"]],
     });
@@ -310,6 +280,7 @@ class FileService {
         { model: Designation, as: "currentDesignation", attributes: ["name"] },
         { model: Department, as: "currentDepartment", attributes: ["name"] },
         { model: FileAttachment, as: "attachments" },
+        { model: User, as: "verifier", attributes: ["full_name"] },
       ],
     });
 
@@ -404,42 +375,15 @@ class FileService {
         current_designation_id: user.designation_id,
         current_department_id: user.department_id,
       },
-      status: {
-        [Op.notIn]: [FILE_STATUS.APPROVED, FILE_STATUS.REJECTED],
-      },
     });
 
     const createdCount = await FileMaster.count({
       where: { created_by: user.id },
     });
 
-    const approvedCount = await FileMaster.count({
-      where: {
-        created_by: user.id,
-        status: FILE_STATUS.APPROVED,
-      },
-    });
-
-    const rejectedCount = await FileMaster.count({
-      where: {
-        created_by: user.id,
-        status: FILE_STATUS.REJECTED,
-      },
-    });
-
-    const revertedCount = await FileMaster.count({
-      where: {
-        created_by: user.id,
-        status: FILE_STATUS.REVERTED,
-      },
-    });
-
     return {
       pending: pendingCount,
       created: createdCount,
-      approved: approvedCount,
-      rejected: rejectedCount,
-      reverted: revertedCount,
     };
   }
 
@@ -520,42 +464,6 @@ class FileService {
     } catch (err) {
       console.error("MinIO Error:", err);
       throw new AppError("Error retrieving attachment from storage.", 500);
-    }
-  }
-
-  /**
-   * 3. Download Signed Document (President's Copy)
-   */
-  async downloadSignedDoc(fileId, user) {
-    const file = await FileMaster.findByPk(fileId);
-    if (!file) throw new AppError("File not found", 404);
-
-    if (!file.signed_doc_url) {
-      throw new AppError("This file has not been signed yet.", 404);
-    }
-
-    if (!this._hasDownloadAccess(file, user)) {
-      throw new AppError(
-        "You do not have permission to download this document.",
-        403,
-      );
-    }
-
-    try {
-      const stream = await minioClient.getObject(
-        BUCKET_NAME,
-        file.signed_doc_url,
-      );
-      const filename = `${file.file_number.replace(/\//g, "-")}_SIGNED.pdf`;
-
-      return {
-        stream,
-        filename,
-        mimeType: "application/pdf",
-      };
-    } catch (err) {
-      console.error("MinIO Error:", err);
-      throw new AppError("Error retrieving signed document.", 500);
     }
   }
 }

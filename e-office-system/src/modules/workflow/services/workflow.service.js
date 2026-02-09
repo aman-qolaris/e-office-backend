@@ -14,10 +14,6 @@ import AppError from "../../../utils/AppError.js";
 
 class WorkflowService {
   async moveFile(fileId, moveData, currentUser) {
-    if (currentUser?.system_role === ROLES.ADMIN) {
-      throw new AppError("Admins are not allowed to move files.", 403);
-    }
-
     const transaction = await sequelize.transaction();
 
     try {
@@ -37,9 +33,25 @@ class WorkflowService {
         );
       }
 
+      // --- SECURITY PIN CHECK (For Verify) ---
+      const sensitiveActions = [MOVEMENT_ACTIONS.VERIFY];
+
+      if (sensitiveActions.includes(moveData.action)) {
+        if (!moveData.pin) {
+          throw new AppError("Security PIN is required for this action.", 400);
+        }
+        const isPinValid = await currentUser.validatePin(moveData.pin);
+        if (!isPinValid) {
+          throw new AppError(
+            "Invalid Security PIN. Please check and try again.",
+            400,
+          );
+        }
+      }
+
       if (moveData.action === MOVEMENT_ACTIONS.VERIFY) {
         // Only Board Members and President can verify
-        const verifiers = [ROLES.BOARD_MEMBER]; // President is also a Board Member role in some contexts, or we check designation
+        const verifiers = [ROLES.BOARD_MEMBER, ROLES.ADMIN]; // President is also a Board Member role in some contexts, or we check designation
         const isPresident =
           currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
 
@@ -50,15 +62,10 @@ class WorkflowService {
           );
         }
 
-        // Special Check: President must upload signed doc before verifying
-        if (isPresident && !file.signed_doc_url) {
-          throw new AppError(
-            "President cannot verify without uploading the Signed Document first.",
-            400,
-          );
-        }
-
         file.is_verified = true;
+        file.verified_by = currentUser.id;
+        file.verified_at = new Date();
+
         await file.save({ transaction });
 
         // Audit Log
@@ -92,53 +99,37 @@ class WorkflowService {
 
       const isReceiverPresident =
         receiver.designation?.name === DESIGNATIONS.PRESIDENT;
+      const isAdmin = currentUser.system_role === ROLES.ADMIN;
 
       // --- RULE 1: Staff cannot send to President ---
-      if (currentUser.system_role === ROLES.STAFF && isReceiverPresident) {
+      if (
+        currentUser.system_role === ROLES.STAFF &&
+        isReceiverPresident &&
+        !isAdmin
+      ) {
         throw new AppError(
           "Hierarchy Violation: Staff cannot send files directly to the President.",
           403,
         );
       }
 
-      // --- RULE 2: Board Member must VERIFY before sending to President ---
-      if (
-        currentUser.system_role === ROLES.BOARD_MEMBER &&
-        isReceiverPresident
-      ) {
-        if (!file.is_verified) {
+      if (!isAdmin) {
+        const isBoardMember = currentUser.system_role === ROLES.BOARD_MEMBER;
+        const isPresident =
+          currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
+
+        // Board Member -> President
+        if (isBoardMember && isReceiverPresident && !file.is_verified) {
           throw new AppError(
             "Verification Required: You must VERIFY this file before forwarding to the President.",
             400,
           );
         }
-      }
 
-      // --- RULE 3: President must VERIFY before Approval/Rejection ---
-      const isPresident =
-        currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
-
-      if (isPresident && moveData.action === MOVEMENT_ACTIONS.FORWARD) {
-        if (!file.is_verified) {
+        // President Forwarding
+        if (isPresident && !file.is_verified) {
           throw new AppError(
-            "Verification Required: President must verify (and sign) before this action.",
-            400,
-          );
-        }
-      }
-
-      // --- SECURITY PIN CHECK (For Verify/Approve/Reject) ---
-      const sensitiveActions = [];
-
-      if (sensitiveActions.includes(moveData.action)) {
-        if (!moveData.pin) {
-          throw new AppError("Security PIN is required for this action.", 400);
-        }
-        const isPinValid = await currentUser.validatePin(moveData.pin);
-        if (!isPinValid) {
-          // 🔴 CRITICAL FIX: Changed from 401 to 400 to prevent auto-logout
-          throw new AppError(
-            "Invalid Security PIN. Please check and try again.",
+            "Verification Required: President must verify before forwarding.",
             400,
           );
         }
@@ -149,6 +140,8 @@ class WorkflowService {
       file.current_department_id = receiver.department_id; // CRITICAL
 
       file.is_verified = false;
+      file.verified_by = null;
+      file.verified_at = null;
 
       await file.save({ transaction });
 

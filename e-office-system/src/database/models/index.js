@@ -28,6 +28,9 @@ FileMaster.belongsTo(User, {
   as: "currentHolder",
 });
 
+User.hasMany(FileMaster, { foreignKey: "verified_by" });
+FileMaster.belongsTo(User, { foreignKey: "verified_by", as: "verifier" });
+
 // 5. Position-Based Access Associations (NEW)
 Designation.hasMany(FileMaster, { foreignKey: "current_designation_id" });
 FileMaster.belongsTo(Designation, {

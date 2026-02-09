@@ -77,6 +77,18 @@ FileMaster.init(
       defaultValue: false,
       comment: "Must be true before Forwarding (for Board/President)",
     },
+
+    verified_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "User ID of the person who verified this file",
+    },
+    verified_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: "Timestamp when verification happened",
+    },
+
     signed_doc_url: {
       type: DataTypes.STRING,
       allowNull: true,
