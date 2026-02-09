@@ -8,7 +8,6 @@ import {
 import {
   MOVEMENT_ACTIONS,
   ROLES,
-  FILE_STATUS,
   DESIGNATIONS,
 } from "../../../config/constants.js";
 import AppError from "../../../utils/AppError.js";
@@ -119,11 +118,7 @@ class WorkflowService {
       const isPresident =
         currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
 
-      if (
-        isPresident &&
-        (moveData.action === MOVEMENT_ACTIONS.APPROVE ||
-          moveData.action === MOVEMENT_ACTIONS.FORWARD)
-      ) {
+      if (isPresident && moveData.action === MOVEMENT_ACTIONS.FORWARD) {
         if (!file.is_verified) {
           throw new AppError(
             "Verification Required: President must verify (and sign) before this action.",
@@ -133,11 +128,7 @@ class WorkflowService {
       }
 
       // --- SECURITY PIN CHECK (For Verify/Approve/Reject) ---
-      const sensitiveActions = [
-        MOVEMENT_ACTIONS.APPROVE,
-        MOVEMENT_ACTIONS.REJECT,
-        MOVEMENT_ACTIONS.VERIFY,
-      ];
+      const sensitiveActions = [];
 
       if (sensitiveActions.includes(moveData.action)) {
         if (!moveData.pin) {
@@ -146,37 +137,16 @@ class WorkflowService {
         const isPinValid = await currentUser.validatePin(moveData.pin);
         if (!isPinValid) {
           // 🔴 CRITICAL FIX: Changed from 401 to 400 to prevent auto-logout
-          throw new AppError("Invalid Security PIN. Please check and try again.", 400);
+          throw new AppError(
+            "Invalid Security PIN. Please check and try again.",
+            400,
+          );
         }
-      }
-
-      // --- NEW: AUTO-UPDATE STATUS ---
-      let newStatus = file.status;
-
-      switch (moveData.action) {
-        case MOVEMENT_ACTIONS.APPROVE:
-          newStatus = FILE_STATUS.APPROVED;
-          break;
-        case MOVEMENT_ACTIONS.REJECT:
-          newStatus = FILE_STATUS.REJECTED;
-          break;
-        case MOVEMENT_ACTIONS.REVERT:
-          newStatus = FILE_STATUS.REVERTED;
-          break;
-        case MOVEMENT_ACTIONS.FORWARD:
-          if (
-            file.status === FILE_STATUS.DRAFT ||
-            file.status === FILE_STATUS.REVERTED
-          ) {
-            newStatus = FILE_STATUS.IN_PROGRESS;
-          }
-          break;
       }
 
       file.current_holder_id = moveData.receiverId; // Keep for reference
       file.current_designation_id = receiver.designation_id; // CRITICAL
       file.current_department_id = receiver.department_id; // CRITICAL
-      file.status = newStatus;
 
       file.is_verified = false;
 

@@ -28,7 +28,25 @@ router.use(protect);
  *       - bearerAuth: []
  *     responses:
  *       '200':
- *         description: List of files currently held by user
+ *         description: List of files currently held by the user's position (designation + department)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Inbox fetched successfully
+ *                 count:
+ *                   type: integer
+ *                   example: 1
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
  */
 
 router.get("/inbox", FileController.getInbox);
@@ -44,7 +62,25 @@ router.get("/inbox", FileController.getInbox);
  *       - bearerAuth: []
  *     responses:
  *       '200':
- *         description: List of files created by user but sent away
+ *         description: List of files the user has sent/moved away
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Outbox fetched successfully
+ *                 count:
+ *                   type: integer
+ *                   example: 1
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
  */
 router.get("/outbox", FileController.getOutbox);
 
@@ -67,7 +103,8 @@ router.get("/outbox", FileController.getOutbox);
  *         name: status
  *         schema:
  *           type: string
- *           enum: [DRAFT, IN_PROGRESS, APPROVED, REJECTED, REVERTED]
+ *           enum: [DRAFT]
+ *         description: Filter by file status (currently supported: DRAFT)
  *       - in: query
  *         name: priority
  *         schema:
@@ -75,7 +112,25 @@ router.get("/outbox", FileController.getOutbox);
  *           enum: [LOW, MEDIUM, HIGH]
  *     responses:
  *       '200':
- *         description: Search results
+ *         description: Search results (department-scoped)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Files searched successfully
+ *                 count:
+ *                   type: integer
+ *                   example: 1
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
  */
 router.get("/search", FileController.searchFiles);
 
@@ -90,7 +145,36 @@ router.get("/search", FileController.searchFiles);
  *       - bearerAuth: []
  *     responses:
  *       '200':
- *         description: Counts of pending, created, approved, rejected files
+ *         description: Counts used for dashboard cards
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Dashboard stats fetched successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     pending:
+ *                       type: integer
+ *                       example: 3
+ *                     created:
+ *                       type: integer
+ *                       example: 10
+ *                     approved:
+ *                       type: integer
+ *                       example: 0
+ *                     rejected:
+ *                       type: integer
+ *                       example: 0
+ *                     reverted:
+ *                       type: integer
+ *                       example: 0
  */
 router.get("/stats", FileController.getDashboardStats);
 
@@ -113,6 +197,19 @@ router.get("/stats", FileController.getDashboardStats);
  *     responses:
  *       '200':
  *         description: Audit trail of the file
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: File history fetched successfully
+ *                 data:
+ *                   type: object
  */
 router.get("/:id/history", FileController.getFileHistory);
 
@@ -164,8 +261,23 @@ router.get("/:id/history", FileController.getFileHistory);
  *     responses:
  *       '201':
  *         description: File created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: e-File created successfully
+ *                 data:
+ *                   type: object
  *       '400':
  *         description: Missing PUC or validation error
+ *       '403':
+ *         description: Forbidden
  */
 
 router.post(
@@ -183,7 +295,7 @@ router.post(
  * /files/{id}/sign:
  *   post:
  *     summary: Upload signed document (President only)
- *     description: Requires Board Member role; service layer enforces President designation.
+ *     description: Requires BOARD_MEMBER system role; service layer enforces PRESIDENT designation and current-holder checks.
  *     tags:
  *       - Files
  *     security:
@@ -211,6 +323,20 @@ router.post(
  *     responses:
  *       '200':
  *         description: Signed document uploaded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Signed document uploaded successfully.
+ *                 url:
+ *                   type: string
+ *                   description: MinIO object key/path
  *       '400':
  *         description: Signed document missing or validation error
  *       '403':
@@ -258,7 +384,22 @@ router.post(
  *                 description: Attachment PDFs (Max 10)
  *     responses:
  *       '201':
- *         description: Attachment added
+ *         description: Attachment(s) added
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Attachments added successfully
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
  *       '400':
  *         description: Attachment missing or validation error
  *       '403':
@@ -292,6 +433,17 @@ router.post(
  *     responses:
  *       '200':
  *         description: Attachment removed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Attachment removed successfully
  *       '403':
  *         description: Forbidden
  *       '404':

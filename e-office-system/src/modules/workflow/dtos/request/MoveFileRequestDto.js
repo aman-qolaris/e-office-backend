@@ -14,7 +14,10 @@ class MoveFileRequestDto {
 
     action: Joi.string()
       .valid(...Object.values(MOVEMENT_ACTIONS))
-      .default(MOVEMENT_ACTIONS.FORWARD),
+      .default(MOVEMENT_ACTIONS.FORWARD)
+      .messages({
+        "any.only": "Invalid action. Allowed actions are: FORWARD, VERIFY.",
+      }),
 
     remarks: Joi.string()
       .required()
