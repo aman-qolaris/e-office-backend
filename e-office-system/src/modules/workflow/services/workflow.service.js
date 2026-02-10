@@ -141,6 +141,8 @@ class WorkflowService {
       file.verified_by = null;
       file.verified_at = null;
 
+      file.status = null;
+
       await file.save({ transaction });
 
       // 5. Create Audit Trail (History)
