@@ -76,7 +76,7 @@ class UserController {
 
   async getAllDesignations(req, res, next) {
     try {
-      const designations = await UserService.getAllDesignations();
+      const designations = await UserService.getAllDesignations(req.user);
 
       res.status(200).json({
         success: true,

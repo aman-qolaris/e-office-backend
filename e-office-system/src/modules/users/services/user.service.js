@@ -247,11 +247,26 @@ class UserService {
     return departments;
   }
 
-  async getAllDesignations() {
+  async getAllDesignations(currentUser) {
+    const whereClause = { is_active: true };
+
+    let showSystemAdmin = false;
+
+    if (
+      currentUser &&
+      currentUser.designation?.name === DESIGNATIONS.PRESIDENT
+    ) {
+      showSystemAdmin = true;
+    }
+
+    if (!showSystemAdmin) {
+      whereClause.name = { [Op.ne]: DESIGNATIONS.SYSTEM_ADMIN };
+    }
+
     return await Designation.findAll({
-      where: { is_active: true, name: { [Op.ne]: DESIGNATIONS.SYSTEM_ADMIN } },
+      where: whereClause,
       attributes: ["id", "name", "level"],
-      order: [["level", "DESC"]], // Show President first
+      order: [["level", "DESC"]],
     });
   }
 
