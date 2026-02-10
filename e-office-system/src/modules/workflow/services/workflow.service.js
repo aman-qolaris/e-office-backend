@@ -113,26 +113,24 @@ class WorkflowService {
         );
       }
 
-      if (!isAdmin) {
-        const isBoardMember = currentUser.system_role === ROLES.BOARD_MEMBER;
-        const isPresident =
-          currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
+      const isBoardMember = currentUser.system_role === ROLES.BOARD_MEMBER;
+      const isSenderPresident =
+        currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
 
-        // Board Member -> President
-        if (isBoardMember && isReceiverPresident && !file.is_verified) {
+      if (isReceiverPresident) {
+        if ((isBoardMember || isAdmin) && !file.is_verified) {
           throw new AppError(
             "Verification Required: You must VERIFY this file before forwarding to the President.",
             400,
           );
         }
+      }
 
-        // President Forwarding
-        if (isPresident && !file.is_verified) {
-          throw new AppError(
-            "Verification Required: President must verify before forwarding.",
-            400,
-          );
-        }
+      if (isSenderPresident && !file.is_verified) {
+        throw new AppError(
+          "Verification Required: President must verify before forwarding.",
+          400,
+        );
       }
 
       file.current_holder_id = moveData.receiverId; // Keep for reference
