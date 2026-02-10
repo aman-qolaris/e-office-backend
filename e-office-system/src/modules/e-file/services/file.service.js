@@ -14,7 +14,6 @@ import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import AppError from "../../../utils/AppError.js";
 import FileResponseDto from "../dtos/response/FileResponseDto.js";
 
-
 class FileService {
   async createFile(fileData, user, pucFile, attachments) {
     const transaction = await sequelize.transaction();
@@ -189,59 +188,62 @@ class FileService {
     return { message: "Attachment removed successfully" };
   }
 
-// ... existing imports
-async getInbox(user) {
+  // ... existing imports
+  async getInbox(user) {
     try {
       const files = await FileMaster.findAll({
         where: {
           current_designation_id: user.designation_id,
           current_department_id: user.department_id,
-         [Op.or]: [
-            { status: { [Op.ne]: 'CLOSED' } }, // Status is 'DRAFT' or 'PENDING'
-            { status: { [Op.is]: null } }      // OR Status is NULL
-          ]
+          [Op.or]: [
+            { status: { [Op.ne]: "CLOSED" } }, // Status is 'DRAFT' or 'PENDING'
+            { status: { [Op.is]: null } }, // OR Status is NULL
+          ],
         },
         include: [
           { model: User, as: "creator", attributes: ["full_name"] },
           { model: Department, as: "department", attributes: ["name"] },
-          { model: Designation, as: "currentDesignation", attributes: ["name"] },
+          {
+            model: Designation,
+            as: "currentDesignation",
+            attributes: ["name"],
+          },
           { model: Department, as: "currentDepartment", attributes: ["name"] },
           { model: User, as: "currentHolder", attributes: ["full_name"] },
           { model: FileAttachment, as: "attachments" },
-          
-          { 
-              model: FileMovement, 
-              as: "movements",
-              limit: 1,
-              where: {
-                  action: { 
-                      [Op.in]: ['FORWARD', 'CREATED', 'VERIFY'] 
-                  }
+
+          {
+            model: FileMovement,
+            as: "movements",
+            limit: 1,
+            where: {
+              action: {
+                [Op.in]: ["FORWARD", "CREATED", "VERIFY"],
               },
-              order: [['createdAt', 'DESC']],
-              include: [
-                  { model: User, as: 'sender', attributes: ["full_name"] } 
-              ],
-              // 🟢 FIX IS HERE: ADD 'sent_by' TO THIS LIST
-              attributes: ['action', 'remarks', 'createdAt', 'sent_by'] 
-          }
+            },
+            order: [["createdAt", "DESC"]],
+            include: [{ model: User, as: "sender", attributes: ["full_name"] }],
+            // 🟢 FIX IS HERE: ADD 'sent_by' TO THIS LIST
+            attributes: ["action", "remarks", "createdAt", "sent_by"],
+          },
         ],
         order: [["updatedAt", "DESC"]],
       });
 
       return files.map((file) => {
-          file.latestMovement = file.movements && file.movements.length > 0 ? file.movements[0] : null;
-          return new FileResponseDto(file);
+        file.latestMovement =
+          file.movements && file.movements.length > 0
+            ? file.movements[0]
+            : null;
+        return new FileResponseDto(file);
       });
-      
     } catch (error) {
       console.error("Error in getInbox:", error);
       throw error;
     }
   }
 
-
-async getOutbox(user) {
+  async getOutbox(user) {
     // 1. Identify files I have ever touched/sent
     const movements = await FileMovement.findAll({
       attributes: ["file_id"],
@@ -257,40 +259,40 @@ async getOutbox(user) {
     const files = await FileMaster.findAll({
       where: {
         id: { [Op.in]: sentFileIds },
-        
+
         // 🟢 LOGIC: Outbox = Files I sent that are NOT currently with me
         [Op.and]: [
-            { current_holder_id: { [Op.ne]: user.id } },
-            // Optional: Ensure it's not at my designation either
-            { current_designation_id: { [Op.ne]: user.designation_id } }
-        ]
+          { current_holder_id: { [Op.ne]: user.id } },
+          // Optional: Ensure it's not at my designation either
+          { current_designation_id: { [Op.ne]: user.designation_id } },
+        ],
       },
       include: [
         { model: User, as: "currentHolder", attributes: ["full_name"] },
         { model: Designation, as: "currentDesignation", attributes: ["name"] },
-        
+
         // 🟢 NEW: Fetch the LATEST movement to get the "Last Remark"
-        { 
-            model: FileMovement, 
-            as: "movements",
-            limit: 1,
-            order: [['createdAt', 'DESC']],
-            attributes: ['action', 'remarks']
-        }
+        {
+          model: FileMovement,
+          as: "movements",
+          limit: 1,
+          order: [["createdAt", "DESC"]],
+          attributes: ["action", "remarks"],
+        },
       ],
       order: [["updatedAt", "DESC"]],
     });
 
     // Map manually because Sequelize 'hasMany' with limit is tricky to alias as single object
     // We attach the first movement from the array to a property called 'latestMovement'
-    const filesWithRemark = files.map(f => {
-        f.latestMovement = f.movements && f.movements.length > 0 ? f.movements[0] : null;
-        return new FileResponseDto(f);
+    const filesWithRemark = files.map((f) => {
+      f.latestMovement =
+        f.movements && f.movements.length > 0 ? f.movements[0] : null;
+      return new FileResponseDto(f);
     });
 
     return filesWithRemark;
   }
-
 
   async getFileHistory(fileId) {
     const file = await FileMaster.findByPk(fileId, {
@@ -352,7 +354,7 @@ async getOutbox(user) {
 
   async searchFiles(query, user) {
     // Changed arg name to 'query' to match usage
-    const { text, status, priority } = query;
+    const { text, status, priority, type } = query;
     const whereClause = {
       // 🚨 SECURITY: Force User's Department (unless you are implementing Global Admin Search later)
       department_id: user.department_id,
@@ -367,6 +369,7 @@ async getOutbox(user) {
 
     if (status) whereClause.status = status;
     if (priority) whereClause.priority = priority;
+    if (type) whereClause.type = type;
 
     // Note: We ignore query.departmentId here to enforce the security rule above.
 
