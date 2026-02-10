@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import path from "path";
 import {
   sequelize,
@@ -12,7 +13,7 @@ import { FILE_STATUS, ROLES, DESIGNATIONS } from "../../../config/constants.js";
 import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import AppError from "../../../utils/AppError.js";
 import FileResponseDto from "../dtos/response/FileResponseDto.js";
-import { Op } from "sequelize";
+
 
 class FileService {
   async createFile(fileData, user, pucFile, attachments) {
@@ -188,87 +189,108 @@ class FileService {
     return { message: "Attachment removed successfully" };
   }
 
-  async getInbox(user) {
-    const files = await FileMaster.findAll({
-      where: {
-        // ✅ CORRECT: Filtering by Position
-        current_designation_id: user.designation_id,
-        current_department_id: user.department_id,
-      },
-      include: [
-        {
-          model: User,
-          as: "creator",
-          attributes: ["full_name"],
-          include: [
-            { model: Designation, as: "designation", attributes: ["name"] },
-          ],
+// ... existing imports
+async getInbox(user) {
+    try {
+      const files = await FileMaster.findAll({
+        where: {
+          current_designation_id: user.designation_id,
+          current_department_id: user.department_id,
+         [Op.or]: [
+            { status: { [Op.ne]: 'CLOSED' } }, // Status is 'DRAFT' or 'PENDING'
+            { status: { [Op.is]: null } }      // OR Status is NULL
+          ]
         },
-        { model: Department, as: "department", attributes: ["name"] },
-        // 🚨 ADDED: Must include these so DTO knows the current location
-        { model: Designation, as: "currentDesignation", attributes: ["name"] },
-        { model: Department, as: "currentDepartment", attributes: ["name"] },
-        {
-          model: User,
-          as: "currentHolder",
-          attributes: ["full_name"],
-        },
-        { model: FileAttachment, as: "attachments" },
-        { model: User, as: "verifier", attributes: ["full_name"] },
-      ],
-      order: [["updatedAt", "DESC"]],
-    });
+        include: [
+          { model: User, as: "creator", attributes: ["full_name"] },
+          { model: Department, as: "department", attributes: ["name"] },
+          { model: Designation, as: "currentDesignation", attributes: ["name"] },
+          { model: Department, as: "currentDepartment", attributes: ["name"] },
+          { model: User, as: "currentHolder", attributes: ["full_name"] },
+          { model: FileAttachment, as: "attachments" },
+          
+          { 
+              model: FileMovement, 
+              as: "movements",
+              limit: 1,
+              where: {
+                  action: { 
+                      [Op.in]: ['FORWARD', 'CREATED', 'VERIFY'] 
+                  }
+              },
+              order: [['createdAt', 'DESC']],
+              include: [
+                  { model: User, as: 'sender', attributes: ["full_name"] } 
+              ],
+              // 🟢 FIX IS HERE: ADD 'sent_by' TO THIS LIST
+              attributes: ['action', 'remarks', 'createdAt', 'sent_by'] 
+          }
+        ],
+        order: [["updatedAt", "DESC"]],
+      });
 
-    return files.map((file) => new FileResponseDto(file));
+      return files.map((file) => {
+          file.latestMovement = file.movements && file.movements.length > 0 ? file.movements[0] : null;
+          return new FileResponseDto(file);
+      });
+      
+    } catch (error) {
+      console.error("Error in getInbox:", error);
+      throw error;
+    }
   }
 
-  async getOutbox(user) {
-    // 1. Find all files where the user was a SENDER in the movement history
+
+async getOutbox(user) {
+    // 1. Identify files I have ever touched/sent
     const movements = await FileMovement.findAll({
       attributes: ["file_id"],
       where: { sent_by: user.id },
       raw: true,
     });
 
-    // Extract unique File IDs
     const sentFileIds = [...new Set(movements.map((m) => m.file_id))];
 
-    if (sentFileIds.length === 0) {
-      return [];
-    }
+    if (sentFileIds.length === 0) return [];
 
-    // 2. Fetch the actual files, BUT exclude ones that are currently back with the user
+    // 2. Fetch Files (NO STATUS CHECK)
     const files = await FileMaster.findAll({
       where: {
-        id: { [Op.in]: sentFileIds }, // Must be in my sent list
-
-        // AND Logic: The file must NOT be currently with me
-        [Op.or]: [
-          { current_designation_id: { [Op.ne]: user.designation_id } },
-          { current_department_id: { [Op.ne]: user.department_id } },
-        ],
+        id: { [Op.in]: sentFileIds },
+        
+        // 🟢 LOGIC: Outbox = Files I sent that are NOT currently with me
+        [Op.and]: [
+            { current_holder_id: { [Op.ne]: user.id } },
+            // Optional: Ensure it's not at my designation either
+            { current_designation_id: { [Op.ne]: user.designation_id } }
+        ]
       },
       include: [
-        {
-          model: User,
-          as: "currentHolder",
-          attributes: ["full_name"],
-        },
+        { model: User, as: "currentHolder", attributes: ["full_name"] },
         { model: Designation, as: "currentDesignation", attributes: ["name"] },
-        { model: Department, as: "currentDepartment", attributes: ["name"] },
-        { model: FileAttachment, as: "attachments" },
-        {
-          model: User,
-          as: "creator",
-          attributes: ["full_name"],
-        },
-        { model: Department, as: "department", attributes: ["name"] },
+        
+        // 🟢 NEW: Fetch the LATEST movement to get the "Last Remark"
+        { 
+            model: FileMovement, 
+            as: "movements",
+            limit: 1,
+            order: [['createdAt', 'DESC']],
+            attributes: ['action', 'remarks']
+        }
       ],
       order: [["updatedAt", "DESC"]],
     });
 
-    return files.map((file) => new FileResponseDto(file));
+    // Map manually because Sequelize 'hasMany' with limit is tricky to alias as single object
+    // We attach the first movement from the array to a property called 'latestMovement'
+    const filesWithRemark = files.map(f => {
+        f.latestMovement = f.movements && f.movements.length > 0 ? f.movements[0] : null;
+        return new FileResponseDto(f);
+    });
+
+    return filesWithRemark;
   }
+
 
   async getFileHistory(fileId) {
     const file = await FileMaster.findByPk(fileId, {
