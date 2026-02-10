@@ -7,9 +7,22 @@ import {
 import { Op } from "sequelize";
 import UserResponseDto from "../dtos/response/UserResponseDto.js";
 import AppError from "../../../utils/AppError.js";
+import { DESIGNATIONS, ROLES } from "../../../config/constants.js";
 
 class UserService {
   async createUser(data) {
+    if (data.systemRole === ROLES.ADMIN) {
+      const adminExists = await User.findOne({
+        where: { system_role: ROLES.ADMIN, is_active: true },
+      });
+      if (adminExists) {
+        throw new AppError(
+          "System already has an Administrator. Only one Admin is allowed.",
+          403,
+        );
+      }
+    }
+
     // 1. Check for Duplicate Phone Number
     const existingUser = await User.findOne({
       where: { phone_number: data.phoneNumber },
@@ -130,7 +143,7 @@ class UserService {
         id: { [Op.ne]: currentUserId }, // Exclude the person requesting (Self)
         is_active: true, // Only show active staff
       },
-      attributes: ["id", "full_name", "email", "system_role","is_active"], // Fetch minimal data
+      attributes: ["id", "full_name", "email", "system_role", "is_active"], // Fetch minimal data
       include: [
         {
           model: Designation,
@@ -160,7 +173,7 @@ class UserService {
 
   async getAllDesignations() {
     return await Designation.findAll({
-      where: { is_active: true },
+      where: { is_active: true, name: { [Op.ne]: DESIGNATIONS.SYSTEM_ADMIN } },
       attributes: ["id", "name", "level"],
       order: [["level", "DESC"]], // Show President first
     });
