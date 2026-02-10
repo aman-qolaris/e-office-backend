@@ -8,9 +8,16 @@ import * as allConstants from "../config/constants.js";
 const router = Router();
 
 router.get("/constants", (req, res) => {
+  const safeConstants = { ...allConstants };
+
+  if (safeConstants.ROLES) {
+    const { ADMIN, ...publicRoles } = safeConstants.ROLES;
+    safeConstants.ROLES = publicRoles;
+  }
+
   res.status(200).json({
     success: true,
-    data: allConstants,
+    data: safeConstants,
   });
 });
 
