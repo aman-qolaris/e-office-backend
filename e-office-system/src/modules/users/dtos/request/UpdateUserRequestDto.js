@@ -36,6 +36,7 @@ class UpdateUserRequestDto {
   static validate(data) {
     const { error, value } = UpdateUserRequestDto.schema.validate(data, {
       abortEarly: false,
+      stripUnknown: true,
     });
     if (error) {
       throw new AppError(error.details.map((d) => d.message).join(", "), 400);

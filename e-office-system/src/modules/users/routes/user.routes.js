@@ -2,12 +2,29 @@ import { Router } from "express";
 import UserController from "../controllers/user.controller.js";
 import { protect } from "../../../middlewares/auth.middleware.js";
 import { restrictTo } from "../../../middlewares/rbac.middleware.js";
-import { ROLES } from "../../../config/constants.js";
+import { DESIGNATIONS, ROLES } from "../../../config/constants.js";
 
 const router = Router();
 
 // Apply Global Protection (Must be logged in)
 router.use(protect);
+
+const permitAdminOrPresident = (req, res, next) => {
+  if (req.user.system_role === ROLES.ADMIN) {
+    return next();
+  }
+
+  if (
+    req.user.designation &&
+    req.user.designation.name === DESIGNATIONS.PRESIDENT
+  ) {
+    return next();
+  }
+
+  return next(
+    new AppError("You do not have permission to perform this action", 403),
+  );
+};
 
 /**
  * @openapi
@@ -200,7 +217,7 @@ router.post(
  *       "409":
  *         description: User already exists
  */
-router.get("/", UserController.getAllUsers);
+router.get("/", permitAdminOrPresident, UserController.getAllUsers);
 router.post("/", restrictTo(ROLES.ADMIN), UserController.createUser);
 
 /**
@@ -250,6 +267,6 @@ router.post("/", restrictTo(ROLES.ADMIN), UserController.createUser);
  *       "404":
  *         description: User not found
  */
-router.patch("/:id", restrictTo(ROLES.ADMIN), UserController.updateUser);
+router.patch("/:id", permitAdminOrPresident, UserController.updateUser);
 
 export default router;
