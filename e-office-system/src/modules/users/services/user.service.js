@@ -70,6 +70,82 @@ class UserService {
         throw new AppError("User not found", 404);
       }
 
+      // =========================================================
+      // 1. ADMIN ROLE SWAP (Presidential Power)
+      // =========================================================
+      // If setting a NEW Admin, demote the OLD Admin to Staff.
+      if (data.systemRole === ROLES.ADMIN && user.system_role !== ROLES.ADMIN) {
+        const currentAdmin = await User.findOne({
+          where: { system_role: ROLES.ADMIN, is_active: true },
+          transaction,
+        });
+
+        if (currentAdmin) {
+          // Demote existing admin to STAFF so we maintain "Single Admin" rule
+          currentAdmin.system_role = ROLES.STAFF;
+          await currentAdmin.save({ transaction });
+        }
+      }
+
+      // ---------------------------------------------------------
+      // 2. DESIGNATION & SEAT SWAP LOGIC
+      // ---------------------------------------------------------
+      let newDesignation = null;
+
+      // Check if designation is changing
+      if (data.designationId && data.designationId !== user.designation_id) {
+        // A. Validate & Fetch New Designation (Once)
+        newDesignation = await Designation.findByPk(data.designationId, {
+          transaction,
+        });
+        if (!newDesignation) throw new AppError("Designation not found", 404);
+
+        // B. Identify the Target Seat (Department)
+        const targetDeptId = data.departmentId || user.department_id;
+
+        // C. Skip Seat Check for "Multi-User" Roles (Member, Clerk)
+        const multiUserDesignations = [DESIGNATIONS.MEMBER, DESIGNATIONS.CLERK];
+
+        if (!multiUserDesignations.includes(newDesignation.name)) {
+          // D. Find if someone else currently holds this seat
+          const existingHolder = await User.findOne({
+            where: {
+              designation_id: newDesignation.id,
+              department_id: targetDeptId,
+              id: { [Op.ne]: userId }, // Not the current user
+              is_active: true,
+            },
+            transaction,
+          });
+
+          // E. Auto-Demote the existing holder to "MEMBER"
+          if (existingHolder) {
+            const memberDesignation = await Designation.findOne({
+              where: { name: DESIGNATIONS.MEMBER },
+              transaction,
+            });
+
+            if (!memberDesignation) {
+              throw new AppError(
+                "System Error: 'MEMBER' designation not found. Cannot auto-demote.",
+                500,
+              );
+            }
+
+            existingHolder.designation_id = memberDesignation.id;
+            // Note: We keep their Role & Department same, just strip the title.
+            await existingHolder.save({ transaction });
+          }
+        }
+      }
+      // Validation: If designation ID provided but NOT changing, just verify it exists
+      else if (data.designationId) {
+        newDesignation = await Designation.findByPk(data.designationId, {
+          transaction,
+        });
+        if (!newDesignation) throw new AppError("Designation not found", 404);
+      }
+
       const oldDesignationId = user.designation_id;
       const isDesignationChanging =
         data.designationId && data.designationId !== user.designation_id;
@@ -81,7 +157,7 @@ class UserService {
         if (!dept) throw new AppError("Department not found", 404);
       }
 
-      if (data.designationId) {
+      if (data.designationId && !isDesignationChanging) {
         const desig = await Designation.findByPk(data.designationId, {
           transaction,
         });
