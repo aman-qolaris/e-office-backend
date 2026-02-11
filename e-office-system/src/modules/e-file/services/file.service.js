@@ -371,8 +371,6 @@ class FileService {
     if (priority) whereClause.priority = priority;
     if (type) whereClause.type = type;
 
-    // Note: We ignore query.departmentId here to enforce the security rule above.
-
     const files = await FileMaster.findAll({
       where: whereClause,
       include: [

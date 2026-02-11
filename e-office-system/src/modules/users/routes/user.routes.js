@@ -3,7 +3,7 @@ import UserController from "../controllers/user.controller.js";
 import { protect } from "../../../middlewares/auth.middleware.js";
 import { restrictTo } from "../../../middlewares/rbac.middleware.js";
 import { DESIGNATIONS, ROLES } from "../../../config/constants.js";
-
+import AppError from "../../../utils/AppError.js";
 const router = Router();
 
 // Apply Global Protection (Must be logged in)
@@ -217,7 +217,7 @@ router.post(
  *       "409":
  *         description: User already exists
  */
-router.get("/", permitAdminOrPresident, UserController.getAllUsers);
+router.get("/", UserController.getAllUsers);
 router.post("/", restrictTo(ROLES.ADMIN), UserController.createUser);
 
 /**
