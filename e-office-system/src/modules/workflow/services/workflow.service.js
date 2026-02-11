@@ -51,16 +51,16 @@ class WorkflowService {
 
       if (moveData.action === MOVEMENT_ACTIONS.VERIFY) {
         // Only Board Members and President can verify
-        const verifiers = [ROLES.BOARD_MEMBER, ROLES.ADMIN]; // President is also a Board Member role in some contexts, or we check designation
-        const isPresident =
-          currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
+        // const verifiers = [ROLES.BOARD_MEMBER, ROLES.ADMIN];
+        // const isPresident =
+        //   currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
 
-        if (!verifiers.includes(currentUser.system_role) && !isPresident) {
-          throw new AppError(
-            "Only Board Members or President can verify files.",
-            403,
-          );
-        }
+        // if (!verifiers.includes(currentUser.system_role) && !isPresident) {
+        //   throw new AppError(
+        //     "Only Board Members or President can verify files.",
+        //     403,
+        //   );
+        // }
 
         file.is_verified = true;
         file.verified_by = currentUser.id;
@@ -115,12 +115,11 @@ class WorkflowService {
         );
       }
 
-      const isBoardMember = currentUser.system_role === ROLES.BOARD_MEMBER;
       const isSenderPresident =
         currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
 
       if (isReceiverPresident) {
-        if ((isBoardMember || isAdmin) && !file.is_verified) {
+        if (!file.is_verified) {
           throw new AppError(
             "Verification Required: You must VERIFY this file before forwarding to the President.",
             400,
