@@ -13,15 +13,15 @@ class UpdateUserRequestDto {
 
     email: Joi.string().email().optional().allow(null, ""),
 
-    password: Joi.string()
-      .pattern(
-        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])(?!.*\s).{8,16}$/,
-      )
-      .optional()
-      .messages({
-        "string.pattern.base":
-          "Password must be 8-16 chars, include uppercase, lowercase, number, and special char.",
-      }),
+    // password: Joi.string()
+    //   .pattern(
+    //     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])(?!.*\s).{8,16}$/,
+    //   )
+    //   .optional()
+    //   .messages({
+    //     "string.pattern.base":
+    //       "Password must be 8-16 chars, include uppercase, lowercase, number, and special char.",
+    //   }),
 
     systemRole: Joi.string()
       .valid(...Object.values(ROLES))

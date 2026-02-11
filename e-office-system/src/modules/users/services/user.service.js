@@ -183,10 +183,6 @@ class UserService {
         is_active: data.isActive !== undefined ? data.isActive : user.is_active,
       });
 
-      if (data.password) {
-        user.password = data.password;
-      }
-
       await user.save({ transaction });
 
       if (isDesignationChanging) {
