@@ -209,26 +209,36 @@ class UserService {
     }
   }
 
-  async getAllUsers(currentUserId) {
+  async getAllUsers(currentUserId, searchQuery = null) {
+    const whereClause = {
+      id: { [Op.ne]: currentUserId },
+      is_active: true,
+    };
+
+    if (searchQuery) {
+      whereClause[Op.or] = [
+        { full_name: { [Op.like]: `%${searchQuery}%` } },
+        { "$designation.name$": { [Op.like]: `%${searchQuery}%` } },
+      ];
+    }
+
     const users = await User.findAll({
-      where: {
-        id: { [Op.ne]: currentUserId }, // Exclude the person requesting (Self)
-        is_active: true, // Only show active staff
-      },
-      attributes: ["id", "full_name", "email", "system_role", "is_active"], // Fetch minimal data
+      where: whereClause,
+      attributes: ["id", "full_name", "email", "system_role", "is_active"],
       include: [
         {
           model: Designation,
           as: "designation",
-          attributes: ["name"], // Important for the Dropdown Label
+          attributes: ["name"],
         },
         {
           model: Department,
           as: "department",
-          attributes: ["name"], // Helpful context
+          attributes: ["name"],
         },
       ],
-      order: [["full_name", "ASC"]], // Alphabetical order
+      order: [["full_name", "ASC"]],
+      subQuery: false,
     });
 
     return users;

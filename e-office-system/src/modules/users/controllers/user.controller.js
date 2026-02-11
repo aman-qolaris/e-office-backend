@@ -48,7 +48,10 @@ class UserController {
   async getAllUsers(req, res, next) {
     try {
       // Pass the current user's ID so we can exclude them from the list
-      const users = await UserService.getAllUsers(req.user.id);
+      const users = await UserService.getAllUsers(
+        req.user.id,
+        req.query.search,
+      );
 
       res.status(200).json({
         success: true,
