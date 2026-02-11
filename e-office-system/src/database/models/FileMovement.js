@@ -24,6 +24,16 @@ FileMovement.init(
       allowNull: false,
     },
 
+    sent_by_designation_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    sent_by_department_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
     // Who received it?
     sent_to: {
       type: DataTypes.INTEGER,

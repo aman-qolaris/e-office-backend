@@ -73,6 +73,8 @@ class WorkflowService {
           {
             file_id: file.id,
             sent_by: currentUser.id,
+            sent_by_designation_id: currentUser.designation_id,
+            sent_by_department_id: currentUser.department_id,
             sent_to: currentUser.id, // Self
             action: MOVEMENT_ACTIONS.VERIFY,
             remarks: moveData.remarks || "File Verified",
@@ -150,6 +152,8 @@ class WorkflowService {
         {
           file_id: file.id,
           sent_by: currentUser.id,
+          sent_by_designation_id: currentUser.designation_id,
+          sent_by_department_id: currentUser.department_id,
           sent_to: moveData.receiverId,
           action: moveData.action,
           remarks: moveData.remarks,

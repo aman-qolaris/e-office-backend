@@ -99,6 +99,8 @@ class FileService {
         {
           file_id: newFile.id,
           sent_by: user.id,
+          sent_by_designation_id: user.designation_id,
+          sent_by_department_id: user.department_id,
           sent_to: user.id,
           action: "CREATED",
           remarks: "File Initiated / Draft Created",
@@ -222,8 +224,20 @@ class FileService {
               },
             },
             order: [["createdAt", "DESC"]],
-            include: [{ model: User, as: "sender", attributes: ["full_name"] }],
-            // 🟢 FIX IS HERE: ADD 'sent_by' TO THIS LIST
+            include: [
+              {
+                model: User,
+                as: "sender",
+                attributes: ["full_name"],
+                include: [
+                  {
+                    model: Designation,
+                    as: "designation",
+                    attributes: ["name"],
+                  },
+                ],
+              },
+            ],
             attributes: ["action", "remarks", "createdAt", "sent_by"],
           },
         ],
@@ -247,7 +261,10 @@ class FileService {
     // 1. Identify files I have ever touched/sent
     const movements = await FileMovement.findAll({
       attributes: ["file_id"],
-      where: { sent_by: user.id },
+      where: {
+        sent_by_designation_id: user.designation_id,
+        sent_by_department_id: user.department_id,
+      },
       raw: true,
     });
 
@@ -262,7 +279,6 @@ class FileService {
 
         // 🟢 LOGIC: Outbox = Files I sent that are NOT currently with me
         [Op.and]: [
-          { current_holder_id: { [Op.ne]: user.id } },
           // Optional: Ensure it's not at my designation either
           { current_designation_id: { [Op.ne]: user.designation_id } },
         ],
@@ -270,7 +286,7 @@ class FileService {
       include: [
         { model: User, as: "currentHolder", attributes: ["full_name"] },
         { model: Designation, as: "currentDesignation", attributes: ["name"] },
-
+        { model: Department, as: "currentDepartment", attributes: ["name"] },
         // 🟢 NEW: Fetch the LATEST movement to get the "Last Remark"
         {
           model: FileMovement,
@@ -278,6 +294,16 @@ class FileService {
           limit: 1,
           order: [["createdAt", "DESC"]],
           attributes: ["action", "remarks"],
+          include: [
+            {
+              model: User,
+              as: "sender",
+              attributes: ["full_name"],
+              include: [
+                { model: Designation, as: "designation", attributes: ["name"] },
+              ],
+            },
+          ],
         },
       ],
       order: [["updatedAt", "DESC"]],
