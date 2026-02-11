@@ -3,24 +3,31 @@ class FileResponseDto {
     this.id = file.id;
     this.fileNumber = file.file_number;
     this.subject = file.subject;
+    this.description = file.description;
     this.priority = file.priority;
     this.type = file.type;
     this.status = file.status;
-    this.signedDocUrl = file.signed_doc_url;
     this.isVerified = file.is_verified;
     this.verifiedBy = file.verifier ? file.verifier.full_name : null;
 
-    // 🟢 NEW: Send the Creator ID (Critical for distinguishing "My Drafts" vs "Received Files")
     this.creatorId = file.created_by;
-if (file.latestMovement && file.latestMovement.sender) {
-        this.lastSender = file.latestMovement.sender.full_name;
+
+    if (file.latestMovement && file.latestMovement.sender) {
+      this.lastSender = file.latestMovement.sender.full_name;
+      this.sentByDesignation = file.latestMovement.sender.designation
+        ? file.latestMovement.sender.designation.name
+        : null;
     } else {
-        this.lastSender = null; // Fallback to be handled by frontend
+      this.lastSender = null;
+      this.sentByDesignation = null;
     }
-    // 🟢 NEW: Extract Last Remark from the latest movement
-    // (This requires the Service to populate 'latestMovement')
-    this.lastAction = file.latestMovement ? file.latestMovement.action : "CREATED";
-    this.lastRemark = file.latestMovement ? file.latestMovement.remarks : "File Initiated";
+
+    this.lastAction = file.latestMovement
+      ? file.latestMovement.action
+      : "CREATED";
+    this.lastRemark = file.latestMovement
+      ? file.latestMovement.remarks
+      : "File Initiated";
 
     // --- CONVERT TO INDIAN TIME (IST) ---
     const options = {
@@ -58,7 +65,7 @@ if (file.latestMovement && file.latestMovement.sender) {
 
     this.createdAt = new Date(file.createdAt).toLocaleString("en-IN", options);
     this.updatedAt = new Date(file.updatedAt).toLocaleString("en-IN", options);
-    
+
     if (file.currentHolder) {
       this.currentHolder = file.currentHolder.full_name;
     } else {

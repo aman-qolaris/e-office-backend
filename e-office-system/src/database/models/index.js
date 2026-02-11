@@ -72,6 +72,12 @@ FileMovement.belongsTo(User, { foreignKey: "sent_by", as: "sender" });
 User.hasMany(FileMovement, { foreignKey: "sent_to" });
 FileMovement.belongsTo(User, { foreignKey: "sent_to", as: "receiver" });
 
+Designation.hasMany(FileMovement, { foreignKey: "sent_by_designation_id" });
+FileMovement.belongsTo(Designation, {
+  foreignKey: "sent_by_designation_id",
+  as: "senderDesignation", // We will use this alias in queries
+});
+
 // Export everything together
 export {
   sequelize,
