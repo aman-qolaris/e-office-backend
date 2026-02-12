@@ -220,10 +220,10 @@ class FileService {
             limit: 1,
             where: {
               action: {
-                [Op.in]: ["FORWARD", "CREATED", "VERIFY"],
+                [Op.in]: ["FORWARD", "CREATED"],
               },
             },
-            order: [["createdAt", "DESC"]],
+            order: [["id", "DESC"]],
             include: [
               {
                 model: User,
@@ -238,7 +238,7 @@ class FileService {
                 ],
               },
             ],
-            attributes: ["action", "remarks", "createdAt", "sent_by"],
+            attributes: ["id", "action", "remarks", "createdAt", "sent_by"],
           },
         ],
         order: [["updatedAt", "DESC"]],
@@ -291,9 +291,7 @@ class FileService {
         {
           model: FileMovement,
           as: "movements",
-          limit: 1,
-          order: [["createdAt", "DESC"]],
-          attributes: ["action", "remarks"],
+          attributes: ["id", "action", "remarks", "createdAt", "sent_by"],
           include: [
             {
               model: User,
@@ -311,9 +309,16 @@ class FileService {
 
     // Map manually because Sequelize 'hasMany' with limit is tricky to alias as single object
     // We attach the first movement from the array to a property called 'latestMovement'
-    const filesWithRemark = files.map((f) => {
-      f.latestMovement =
-        f.movements && f.movements.length > 0 ? f.movements[0] : null;
+  const filesWithRemark = files.map((f) => {
+      // 🟢 FIX: Manually Sort by ID DESC in JavaScript
+      // This forces the "Forward" action (Higher ID) to be selected over "Created" (Lower ID)
+      // regardless of how the database returned the rows.
+      if (f.movements && f.movements.length > 0) {
+          f.movements.sort((a, b) => b.id - a.id); // Sort Descending by ID
+          f.latestMovement = f.movements[0];
+      } else {
+          f.latestMovement = null;
+      }
       return new FileResponseDto(f);
     });
 
