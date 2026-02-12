@@ -257,7 +257,6 @@ class FileService {
           {
             model: FileMovement,
             as: "movements",
-           // limit: 1,
             where: {
               action: {
                 [Op.in]: ["FORWARD", "CREATED", "VERIFY"], // Consider VERIFY for latest action as well
