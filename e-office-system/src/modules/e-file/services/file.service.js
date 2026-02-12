@@ -259,7 +259,7 @@ class FileService {
             as: "movements",
             where: {
               action: {
-                [Op.in]: ["FORWARD", "CREATED"],
+                [Op.in]: ["FORWARD", "CREATED", "VERIFY"], // Consider VERIFY for latest action as well
               },
             },
             order: [["id", "DESC"]],
@@ -293,10 +293,27 @@ class FileService {
       }
 
       const data = files.map((file) => {
-        file.latestMovement =
-          file.movements && file.movements.length > 0
-            ? file.movements[0]
-            : null;
+       if (file.movements && file.movements.length > 0) {
+            // Sort just in case the DB order wasn't strict
+            file.movements.sort((a, b) => b.id - a.id);
+
+            // A. The Remark comes from the absolute latest action (e.g., "Verified via PIN")
+            const latestAction = file.movements[0];
+
+            // B. The Sender comes from the latest "FORWARD" or "CREATED" action
+            // (Skipping "VERIFY" so your own name doesn't appear as sender)
+            const senderAction = file.movements.find(m => 
+                m.action === "FORWARD" || m.action === "CREATED"
+            );
+
+            // C. Combine them for the DTO
+            file.latestMovement = {
+                ...latestAction.toJSON(), // Use Remark/Date from Latest
+                sender: senderAction ? senderAction.sender : latestAction.sender // Use Sender from Forwarder
+            };
+        } else {
+            file.latestMovement = null;
+        }
         return new FileResponseDto(file);
       });
 
