@@ -76,14 +76,16 @@ class FileController {
 
   async getInbox(req, res, next) {
     try {
+      const { limit, cursor } = req.query;
       // "req.user.id" comes from the 'protect' middleware (the token)
-      const files = await FileService.getInbox(req.user);
+      const result = await FileService.getInbox(req.user, { limit, cursor });
 
       res.status(200).json({
         success: true,
         message: "Inbox fetched successfully",
-        count: files.length,
-        data: files,
+        count: result.data.length,
+        data: result.data,
+        nextCursor: result.nextCursor,
       });
     } catch (error) {
       next(error);
@@ -92,12 +94,15 @@ class FileController {
 
   async getOutbox(req, res, next) {
     try {
-      const files = await FileService.getOutbox(req.user);
+      const { limit, cursor } = req.query;
+
+      const result = await FileService.getOutbox(req.user, { limit, cursor });
       res.status(200).json({
         success: true,
         message: "Outbox fetched successfully",
-        count: files.length,
-        data: files,
+        count: result.data.length,
+        data: result.data,
+        nextCursor: result.nextCursor,
       });
     } catch (error) {
       next(error);
@@ -107,12 +112,15 @@ class FileController {
   async getFileHistory(req, res, next) {
     try {
       const { id } = req.params; // Get file ID from URL
-      const history = await FileService.getFileHistory(id);
+      const { limit, cursor } = req.query;
+
+      const result = await FileService.getFileHistory(id, { limit, cursor });
 
       res.status(200).json({
         success: true,
         message: "File history fetched successfully",
-        data: history,
+        data: result.data,
+        nextCursor: result.nextCursor,
       });
     } catch (error) {
       next(error);

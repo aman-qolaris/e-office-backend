@@ -14,6 +14,18 @@ import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import AppError from "../../../utils/AppError.js";
 import FileResponseDto from "../dtos/response/FileResponseDto.js";
 
+const encodeCursor = (data) => {
+  return Buffer.from(JSON.stringify(data)).toString("base64");
+};
+
+const decodeCursor = (cursor) => {
+  try {
+    return JSON.parse(Buffer.from(cursor, "base64").toString("utf-8"));
+  } catch (e) {
+    return null;
+  }
+};
+
 class FileService {
   async createFile(fileData, user, pucFile, attachments) {
     const transaction = await sequelize.transaction();
@@ -191,17 +203,45 @@ class FileService {
   }
 
   // ... existing imports
-  async getInbox(user) {
+  async getInbox(user, { limit = 10, cursor = null } = {}) {
     try {
-      const files = await FileMaster.findAll({
-        where: {
-          current_designation_id: user.designation_id,
-          current_department_id: user.department_id,
+      const limitNum = parseInt(limit) || 10;
+      const decodedCursor = cursor ? decodeCursor(cursor) : null;
+
+      // Base Condition
+      const whereClause = {
+        current_designation_id: user.designation_id,
+        current_department_id: user.department_id,
+        [Op.and]: [
+          {
+            [Op.or]: [
+              { status: { [Op.ne]: "CLOSED" } },
+              { status: { [Op.is]: null } },
+            ],
+          },
+        ],
+      };
+
+      // Apply Cursor (Pagination Logic)
+      if (decodedCursor) {
+        whereClause[Op.and].push({
           [Op.or]: [
-            { status: { [Op.ne]: "CLOSED" } }, // Status is 'DRAFT' or 'PENDING'
-            { status: { [Op.is]: null } }, // OR Status is NULL
+            { updatedAt: { [Op.lt]: decodedCursor.updatedAt } }, // Older than cursor
+            {
+              updatedAt: decodedCursor.updatedAt,
+              id: { [Op.lt]: decodedCursor.id }, // Tie-breaker: smaller ID
+            },
           ],
-        },
+        });
+      }
+
+      const files = await FileMaster.findAll({
+        where: whereClause,
+        limit: limitNum + 1,
+        order: [
+          ["updatedAt", "DESC"],
+          ["id", "DESC"],
+        ],
         include: [
           { model: User, as: "creator", attributes: ["full_name"] },
           { model: Department, as: "department", attributes: ["name"] },
@@ -241,23 +281,36 @@ class FileService {
             attributes: ["id", "action", "remarks", "createdAt", "sent_by"],
           },
         ],
-        order: [["updatedAt", "DESC"]],
       });
 
-      return files.map((file) => {
+      let nextCursor = null;
+      if (files.length > limitNum) {
+        files.pop();
+        const lastItem = files[files.length - 1];
+        nextCursor = encodeCursor({
+          updatedAt: lastItem.updatedAt,
+          id: lastItem.id,
+        });
+      }
+
+      const data = files.map((file) => {
         file.latestMovement =
           file.movements && file.movements.length > 0
             ? file.movements[0]
             : null;
         return new FileResponseDto(file);
       });
+
+      return { data, nextCursor };
     } catch (error) {
       console.error("Error in getInbox:", error);
       throw error;
     }
   }
 
-  async getOutbox(user) {
+  async getOutbox(user, { limit = 10, cursor = null } = {}) {
+    const limitNum = parseInt(limit) || 10;
+    const decodedCursor = cursor ? decodeCursor(cursor) : null;
     // 1. Identify files I have ever touched/sent
     const movements = await FileMovement.findAll({
       attributes: ["file_id"],
@@ -270,24 +323,38 @@ class FileService {
 
     const sentFileIds = [...new Set(movements.map((m) => m.file_id))];
 
-    if (sentFileIds.length === 0) return [];
+    if (sentFileIds.length === 0) return { data: [], nextCursor: null };
+
+    const whereClause = {
+      id: { [Op.in]: sentFileIds },
+      [Op.and]: [{ current_designation_id: { [Op.ne]: user.designation_id } }],
+    };
+
+    // Apply Cursor
+    if (decodedCursor) {
+      whereClause[Op.and].push({
+        [Op.or]: [
+          { updatedAt: { [Op.lt]: decodedCursor.updatedAt } },
+          {
+            updatedAt: decodedCursor.updatedAt,
+            id: { [Op.lt]: decodedCursor.id },
+          },
+        ],
+      });
+    }
 
     // 2. Fetch Files (NO STATUS CHECK)
     const files = await FileMaster.findAll({
-      where: {
-        id: { [Op.in]: sentFileIds },
-
-        // 🟢 LOGIC: Outbox = Files I sent that are NOT currently with me
-        [Op.and]: [
-          // Optional: Ensure it's not at my designation either
-          { current_designation_id: { [Op.ne]: user.designation_id } },
-        ],
-      },
+      where: whereClause,
+      limit: limitNum + 1,
+      order: [
+        ["updatedAt", "DESC"],
+        ["id", "DESC"],
+      ],
       include: [
         { model: User, as: "currentHolder", attributes: ["full_name"] },
         { model: Designation, as: "currentDesignation", attributes: ["name"] },
         { model: Department, as: "currentDepartment", attributes: ["name"] },
-        // 🟢 NEW: Fetch the LATEST movement to get the "Last Remark"
         {
           model: FileMovement,
           as: "movements",
@@ -304,34 +371,40 @@ class FileService {
           ],
         },
       ],
-      order: [["updatedAt", "DESC"]],
     });
 
-    // Map manually because Sequelize 'hasMany' with limit is tricky to alias as single object
-    // We attach the first movement from the array to a property called 'latestMovement'
-  const filesWithRemark = files.map((f) => {
-      // 🟢 FIX: Manually Sort by ID DESC in JavaScript
-      // This forces the "Forward" action (Higher ID) to be selected over "Created" (Lower ID)
-      // regardless of how the database returned the rows.
+    let nextCursor = null;
+    if (files.length > limitNum) {
+      files.pop();
+      const lastItem = files[files.length - 1];
+      nextCursor = encodeCursor({
+        updatedAt: lastItem.updatedAt,
+        id: lastItem.id,
+      });
+    }
+
+    const filesWithRemark = files.map((f) => {
       if (f.movements && f.movements.length > 0) {
-          f.movements.sort((a, b) => b.id - a.id); // Sort Descending by ID
-          f.latestMovement = f.movements[0];
+        f.movements.sort((a, b) => b.id - a.id); // Sort Descending by ID
+        f.latestMovement = f.movements[0];
       } else {
-          f.latestMovement = null;
+        f.latestMovement = null;
       }
       return new FileResponseDto(f);
     });
 
-    return filesWithRemark;
+    return { data: filesWithRemark, nextCursor };
   }
 
-  async getFileHistory(fileId) {
+  async getFileHistory(fileId, { limit = 20, cursor = null } = {}) {
+    const limitNum = parseInt(limit) || 20;
+    const cursorId = cursor ? parseInt(cursor) : 0;
+
     const file = await FileMaster.findByPk(fileId, {
       include: [
         { model: Department, as: "department", attributes: ["name"] },
         { model: User, as: "creator", attributes: ["full_name"] },
         { model: User, as: "currentHolder", attributes: ["full_name"] },
-        // 🚨 ADDED: Includes for consistency
         { model: Designation, as: "currentDesignation", attributes: ["name"] },
         { model: Department, as: "currentDepartment", attributes: ["name"] },
         { model: FileAttachment, as: "attachments" },
@@ -343,8 +416,14 @@ class FileService {
       throw new AppError("File not found", 404);
     }
 
+    const movementWhere = { file_id: fileId };
+    if (cursorId > 0) {
+      movementWhere.id = { [Op.gt]: cursorId }; // Fetch newer movements than cursor
+    }
+
     const movements = await FileMovement.findAll({
-      where: { file_id: fileId },
+      where: movementWhere,
+      limit: limitNum + 1,
       include: [
         {
           model: User,
@@ -363,23 +442,33 @@ class FileService {
           ],
         },
       ],
-      order: [["createdAt", "ASC"]],
+      order: [["id", "ASC"]],
     });
 
+    let nextCursor = null;
+    if (movements.length > limitNum) {
+      movements.pop();
+      // For history, nextCursor is just the ID of the last item returned
+      nextCursor = movements[movements.length - 1].id;
+    }
+
     return {
-      file: new FileResponseDto(file),
-      history: movements.map((move) => ({
-        id: move.id,
-        action: move.action,
-        remarks: move.remarks,
-        from: move.sender ? move.sender.full_name : "System",
-        to: move.receiver ? move.receiver.full_name : "System",
-        senderDesignation: move.sender?.designation?.name, // Helpful extra info
-        receiverDesignation: move.receiver?.designation?.name,
-        date: new Date(move.createdAt).toLocaleString("en-IN", {
-          timeZone: "Asia/Kolkata",
-        }),
-      })),
+      data: {
+        file: new FileResponseDto(file),
+        history: movements.map((move) => ({
+          id: move.id,
+          action: move.action,
+          remarks: move.remarks,
+          from: move.sender ? move.sender.full_name : "System",
+          to: move.receiver ? move.receiver.full_name : "System",
+          senderDesignation: move.sender?.designation?.name,
+          receiverDesignation: move.receiver?.designation?.name,
+          date: new Date(move.createdAt).toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+          }),
+        })),
+      },
+      nextCursor,
     };
   }
 
