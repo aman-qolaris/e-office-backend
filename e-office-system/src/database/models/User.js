@@ -1,7 +1,7 @@
 import { DataTypes, Model } from "sequelize";
 import bcrypt from "bcryptjs";
 import sequelize from "../../config/database.js";
-import { ROLES, DESIGNATIONS } from "../../config/constants.js";
+import { ROLES } from "../../config/constants.js";
 
 class User extends Model {
   // 1. Helper to check Password during Login
@@ -13,6 +13,16 @@ class User extends Model {
   async validatePin(pin) {
     if (!this.security_pin) return false;
     return await bcrypt.compare(pin, this.security_pin);
+  }
+
+  async validateResetOtp(otp) {
+    if (!this.reset_otp || !this.reset_otp_expires) return false;
+
+    // Check if OTP has expired (current time > expiry time)
+    if (new Date() > this.reset_otp_expires) return false;
+
+    // Verify the Hash
+    return await bcrypt.compare(otp, this.reset_otp);
   }
 }
 
@@ -97,6 +107,17 @@ User.init(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+
+    reset_otp: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: "Hashed OTP for password reset",
+    },
+    reset_otp_expires: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: "Expiration time for the OTP",
+    },
   },
   {
     sequelize,
@@ -127,6 +148,9 @@ User.init(
         if (user.security_pin) {
           user.security_pin = await bcrypt.hash(user.security_pin, 10);
         }
+        if (user.reset_otp) {
+          user.reset_otp = await bcrypt.hash(user.reset_otp, 10);
+        }
       },
       beforeUpdate: async (user) => {
         if (user.changed("password")) {
@@ -134,6 +158,9 @@ User.init(
         }
         if (user.changed("security_pin")) {
           user.security_pin = await bcrypt.hash(user.security_pin, 10);
+        }
+        if (user.changed("reset_otp") && user.reset_otp) {
+          user.reset_otp = await bcrypt.hash(user.reset_otp, 10);
         }
       },
     },

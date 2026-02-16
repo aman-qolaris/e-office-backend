@@ -6,6 +6,9 @@ import {
 } from "../../../database/models/index.js";
 import AuthResponseDto from "../dtos/response/AuthResponseDto.js";
 import AppError from "../../../utils/AppError.js";
+import crypto from "crypto";
+import notificationService from "../../../utils/notification.service.js";
+import { passwordResetTemplate } from "../../../utils/templates/emailTemplates.js";
 
 class AuthService {
   async login(loginDto) {
@@ -83,6 +86,66 @@ class AuthService {
     await user.save();
 
     return { message: "Security PIN set successfully" };
+  }
+
+  async forgotPassword(data) {
+    const { phoneNumber } = data;
+    // 1. Find User
+    const user = await User.findOne({ where: { phone_number: phoneNumber } });
+    if (!user) {
+      throw new AppError("User with this phone number not found", 404);
+    }
+
+    // 2. Generate OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+
+    // 3. Update User (Hook will hash otp)
+    user.reset_otp = otp;
+    user.reset_otp_expires = new Date(Date.now() + 5 * 60 * 1000); // 10 mins
+    await user.save();
+
+    // 4. Send Notifications
+    const smsMessage = `Dear Member, your OTP for updating your password is ${otp}. The OTP is valid for 5 minutes. MMR`;
+
+    // We run these in parallel without awaiting to ensure fast API response,
+    // or you can await them if you want to be sure they sent.
+    await notificationService.sendSMS(user.phone_number, smsMessage, otp);
+
+    if (user.email) {
+      const emailHtml = passwordResetTemplate(otp);
+
+      await notificationService.sendEmail(
+        user.email,
+        "Password Reset OTP - MDLRPR",
+        emailHtml,
+      );
+    }
+
+    return { message: "OTP sent successfully to registered phone and email." };
+  }
+
+  async resetPassword({ phoneNumber, otp, newPassword }) {
+    const user = await User.findOne({ where: { phone_number: phoneNumber } });
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+
+    // 1. Validate OTP
+    const isValid = await user.validateResetOtp(otp);
+    if (!isValid) {
+      throw new AppError("Invalid or Expired OTP", 400);
+    }
+
+    // 2. Set New Password
+    user.password = newPassword;
+
+    // 3. Clear OTP
+    user.reset_otp = null;
+    user.reset_otp_expires = null;
+
+    await user.save();
+
+    return { message: "Password reset successfully. You can now login." };
   }
 
   generateToken(user) {
