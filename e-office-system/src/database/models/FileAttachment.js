@@ -22,13 +22,18 @@ FileAttachment.init(
       onDelete: "CASCADE", // Critical for Clients: If they delete the file, attachments vanish automatically.
     },
 
-    // META: Original Name (e.g., "Invoice_Oct.pdf")
+    movement_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: { model: "file_movements", key: "id" },
+      onDelete: "CASCADE",
+    },
+
     original_name: {
       type: DataTypes.STRING,
       allowNull: false,
     },
 
-    // STORAGE: MinIO Key
     file_key: {
       type: DataTypes.STRING,
       allowNull: false,

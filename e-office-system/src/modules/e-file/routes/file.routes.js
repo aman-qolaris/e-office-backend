@@ -1,7 +1,6 @@
 import { Router } from "express";
 import FileController from "../controllers/file.controller.js";
 import { protect } from "../../../middlewares/auth.middleware.js";
-import { upload } from "../../../middlewares/upload.middleware.js";
 
 const router = Router();
 
@@ -24,6 +23,20 @@ router.use(protect);
  *       - Files
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Page size
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: Base64 cursor returned from previous response (nextCursor)
  *     responses:
  *       '200':
  *         description: List of files currently held by the user's position (designation + department)
@@ -45,6 +58,10 @@ router.use(protect);
  *                   type: array
  *                   items:
  *                     type: object
+ *                 nextCursor:
+ *                   type: string
+ *                   nullable: true
+ *                   description: Cursor for the next page (pass as cursor query param)
  *       '401':
  *         description: Unauthorized
  */
@@ -60,6 +77,20 @@ router.get("/inbox", FileController.getInbox);
  *       - Files
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Page size
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: Base64 cursor returned from previous response (nextCursor)
  *     responses:
  *       '200':
  *         description: List of files the user has sent/moved away
@@ -81,6 +112,10 @@ router.get("/inbox", FileController.getInbox);
  *                   type: array
  *                   items:
  *                     type: object
+ *                 nextCursor:
+ *                   type: string
+ *                   nullable: true
+ *                   description: Cursor for the next page (pass as cursor query param)
  *       '401':
  *         description: Unauthorized
  */
@@ -144,45 +179,6 @@ router.get("/search", FileController.searchFiles);
 
 /**
  * @openapi
- * /files/stats:
- *   get:
- *     summary: Get Dashboard Statistics
- *     tags:
- *       - Files
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       '200':
- *         description: Counts used for dashboard cards
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Dashboard stats fetched successfully
- *                 data:
- *                   type: object
- *                   properties:
- *                     pending:
- *                       type: integer
- *                       example: 3
- *                     created:
- *                       type: integer
- *                       example: 10
- *       '500':
- *         description: Internal Server Error
- *       '401':
- *         description: Unauthorized
- */
-router.get("/stats", FileController.getDashboardStats);
-
-/**
- * @openapi
  * /files/{id}/history:
  *   get:
  *     summary: Get movement history of a specific file
@@ -197,6 +193,20 @@ router.get("/stats", FileController.getDashboardStats);
  *         schema:
  *           type: integer
  *         description: File ID
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 200
+ *           default: 20
+ *         description: Page size (movement items)
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: integer
+ *           nullable: true
+ *         description: Movement ID cursor returned from previous response (nextCursor)
  *     responses:
  *       '200':
  *         description: Audit trail of the file
@@ -213,6 +223,10 @@ router.get("/stats", FileController.getDashboardStats);
  *                   example: File history fetched successfully
  *                 data:
  *                   type: object
+ *                 nextCursor:
+ *                   type: integer
+ *                   nullable: true
+ *                   description: Cursor for the next page (pass as cursor query param)
  *       '401':
  *         description: Unauthorized
  *       '404':
@@ -227,7 +241,7 @@ router.get("/:id/history", FileController.getFileHistory);
  * @openapi
  * /files:
  *   post:
- *     summary: Create a new E-File with Attachments
+ *     summary: Create a new E-File (Draft)
  *     tags:
  *       - Files
  *     security:
@@ -235,36 +249,21 @@ router.get("/:id/history", FileController.getFileHistory);
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
  *             required:
  *               - subject
- *               - puc
  *             properties:
  *               subject:
  *                 type: string
+ *                 minLength: 5
+ *                 maxLength: 255
  *                 description: The main subject of the file
- *               description:
- *                 type: string
  *               priority:
  *                 type: string
  *                 enum: [LOW, MEDIUM, HIGH]
  *                 default: LOW
- *               type:
- *                 type: string
- *                 enum: [GENERIC, FINANCIAL, POLICY]
- *                 default: GENERIC
- *               puc:
- *                 type: string
- *                 format: binary
- *                 description: Main PDF File (Required)
- *               attachments:
- *                 type: array
- *                 items:
- *                   type: string
- *                   format: binary
- *                 description: Extra supporting documents (Max 10)
  *     responses:
  *       '201':
  *         description: File created successfully
@@ -282,163 +281,14 @@ router.get("/:id/history", FileController.getFileHistory);
  *                 data:
  *                   type: object
  *       '400':
- *         description: Missing PUC or validation error
+ *         description: Validation error
  *       '401':
  *         description: Unauthorized
  *       '500':
  *         description: Internal Server Error
  */
 
-router.post(
-  "/",
-  upload.fields([
-    { name: "puc", maxCount: 1 }, // The Main Letter (Mandatory)
-    { name: "attachments", maxCount: 10 }, // Supporting Docs (Optional, max 10)
-  ]),
-  FileController.createFile,
-);
-
-/**
- * @openapi
- * /files/{id}/attachment:
- *   post:
- *     summary: Add extra attachment(s) to a file
- *     tags:
- *       - Files
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: File ID
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             required:
- *               - attachments
- *             properties:
- *               attachments:
- *                 type: array
- *                 items:
- *                   type: string
- *                   format: binary
- *                 description: Attachment PDFs (Max 10)
- *     responses:
- *       '201':
- *         description: Attachment(s) added
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Attachments added successfully
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *       '400':
- *         description: Attachment missing or validation error
- *       '401':
- *         description: Unauthorized
- *       '403':
- *         description: Forbidden (only the current holder can add attachments)
- *       '404':
- *         description: File not found
- */
-router.post(
-  "/:id/attachment",
-  upload.array("attachments", 10),
-  FileController.addAttachment,
-);
-
-/**
- * @openapi
- * /files/attachment/{attachmentId}:
- *   delete:
- *     summary: Remove an attachment
- *     tags:
- *       - Files
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: attachmentId
- *         required: true
- *         schema:
- *           type: integer
- *         description: Attachment ID
- *     responses:
- *       '200':
- *         description: Attachment removed
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Attachment removed successfully
- *       '403':
- *         description: Forbidden (only the current holder can remove attachments)
- *       '401':
- *         description: Unauthorized
- *       '404':
- *         description: Attachment not found
- */
-router.delete("/attachment/:attachmentId", FileController.removeAttachment);
-
-/**
- * @openapi
- * /files/{id}/download-puc:
- *   get:
- *     summary: Download main PUC (PDF)
- *     tags:
- *       - Files
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: File ID
- *     responses:
- *       '200':
- *         description: PUC file stream
- *         content:
- *           application/pdf:
- *             schema:
- *               type: string
- *               format: binary
- *           application/octet-stream:
- *             schema:
- *               type: string
- *               format: binary
- *       '403':
- *         description: Forbidden
- *       '401':
- *         description: Unauthorized
- *       '404':
- *         description: File or PUC not found
- *       '500':
- *         description: Internal Server Error
- */
-router.get("/:id/download-puc", FileController.downloadPuc);
+router.post("/", FileController.createFile);
 
 /**
  * @openapi

@@ -20,29 +20,9 @@ FileMaster.init(
       type: DataTypes.STRING,
       allowNull: false,
     },
-    description: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-    puc_url: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    original_filename: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    mime_type: {
-      type: DataTypes.STRING,
-      defaultValue: "application/pdf",
-    },
     priority: {
       type: DataTypes.ENUM(...Object.values(PRIORITY)),
       defaultValue: PRIORITY.LOW,
-    },
-    type: {
-      type: DataTypes.ENUM(...Object.values(FILE_TYPES)),
-      defaultValue: FILE_TYPES.GENERIC,
     },
     status: {
       type: DataTypes.ENUM(...Object.values(FILE_STATUS)),

@@ -5,69 +5,18 @@ import AppError from "../../../utils/AppError.js";
 class FileController {
   async createFile(req, res, next) {
     try {
-      // 1. Check if file is present
-      if (!req.files || !req.files["puc"]) {
-        throw new AppError("PUC Document (Main PDF) is required", 400);
-      }
-
-      const pucFile = req.files["puc"][0]; // The Main File
-      const attachmentFiles = req.files["attachments"] || []; // Array of extra files (can be empty)
-
       // 2. Validate Text Data
       const fileData = CreateFileRequestDto.validate(req.body);
 
       // 3. Call Service
       // We pass: Data, User (from token), File Buffer, and Original Name
-      const newFile = await FileService.createFile(
-        fileData,
-        req.user,
-        pucFile, // Pass the whole PUC object (buffer, name, mime)
-        attachmentFiles, // Pass the array of attachments
-      );
+      const newFile = await FileService.createFile(fileData, req.user);
 
       // 4. Response
       res.status(201).json({
         success: true,
         message: "e-File created successfully",
         data: newFile,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async addAttachment(req, res, next) {
-    try {
-      // Frontend must send field name: 'attachments'
-      if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
-        throw new AppError("At least one attachment file is required.", 400);
-      }
-
-      const { id } = req.params; // File ID
-      const attachments = await FileService.addAttachment(
-        id,
-        req.files,
-        req.user,
-      );
-
-      res.status(201).json({
-        success: true,
-        message: "Attachments added successfully",
-        data: attachments,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async removeAttachment(req, res, next) {
-    try {
-      const { attachmentId } = req.params;
-      const result = await FileService.removeAttachment(attachmentId, req.user);
-
-      res.status(200).json({
-        success: true,
-        message: result.message,
       });
     } catch (error) {
       next(error);
@@ -138,44 +87,6 @@ class FileController {
         count: files.length,
         data: files,
       });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getDashboardStats(req, res, next) {
-    try {
-      const stats = await FileService.getDashboardStats(req.user);
-      res.status(200).json({
-        success: true,
-        message: "Dashboard stats fetched successfully",
-        data: stats,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  /**
-   * Download PUC (Main File)
-   */
-  async downloadPuc(req, res, next) {
-    try {
-      const { id } = req.params;
-      const { stream, filename, mimeType } = await FileService.downloadPuc(
-        id,
-        req.user,
-      );
-
-      // Set headers to trigger file download in browser
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${filename}"`,
-      );
-      res.setHeader("Content-Type", mimeType);
-
-      // Pipe the stream directly to the response
-      stream.pipe(res);
     } catch (error) {
       next(error);
     }
