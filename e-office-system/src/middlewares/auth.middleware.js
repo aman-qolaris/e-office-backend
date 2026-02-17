@@ -34,6 +34,20 @@ export const protect = async (req, res, next) => {
         new AppError("The user belonging to this token no longer exists.", 401),
       );
     }
+    if (currentUser.passwordChangedAt) {
+      const changedTimestamp = parseInt(
+        currentUser.passwordChangedAt.getTime() / 1000,
+        10,
+      );
+      if (decoded.iat < changedTimestamp) {
+        return next(
+          new AppError(
+            "User recently changed password! Please log in again.",
+            401,
+          ),
+        );
+      }
+    }
 
     // 4. Check if user is active
     if (!currentUser.is_active) {

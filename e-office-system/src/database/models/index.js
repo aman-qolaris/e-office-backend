@@ -55,13 +55,14 @@ FileMaster.belongsTo(Department, {
 FileMaster.hasMany(FileMovement, { foreignKey: "file_id", as: "movements" });
 FileMovement.belongsTo(FileMaster, { foreignKey: "file_id", as: "file" });
 
-FileMaster.hasMany(FileAttachment, {
-  foreignKey: "file_id",
+FileMovement.hasMany(FileAttachment, {
+  foreignKey: "movement_id",
   as: "attachments",
+  onDelete: "CASCADE",
 });
-FileAttachment.belongsTo(FileMaster, {
-  foreignKey: "file_id",
-  as: "masterFile",
+FileAttachment.belongsTo(FileMovement, {
+  foreignKey: "movement_id",
+  as: "movement",
 });
 
 // 2. Movement has a Sender (User)

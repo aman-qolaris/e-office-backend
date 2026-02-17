@@ -1,5 +1,4 @@
 import { Op } from "sequelize";
-import path from "path";
 import {
   sequelize,
   FileMaster,
@@ -27,7 +26,7 @@ const decodeCursor = (cursor) => {
 };
 
 class FileService {
-  async createFile(fileData, user, pucFile, attachments) {
+  async createFile(fileData, user) {
     const transaction = await sequelize.transaction();
 
     try {
@@ -42,26 +41,14 @@ class FileService {
       const runningNo = String(count + 1).padStart(3, "0");
       const fileNumber = `MMD/${deptCode}/${runningNo}/${year}`;
 
-      // Upload PUC
-      const pucTimestamp = Date.now();
-      const pucExt = path.extname(pucFile.originalname);
-      const pucUniqueSuffix = `${pucTimestamp}-${Math.round(Math.random() * 1e4)}`;
-      const pucObjectName = `files/${year}/${deptCode}/${pucUniqueSuffix}${pucExt}`;
-
-      await minioClient.putObject(BUCKET_NAME, pucObjectName, pucFile.buffer);
-
       // Save File
       const newFile = await FileMaster.create(
         {
           file_number: fileNumber,
           subject: fileData.subject,
-          description: fileData.description,
           priority: fileData.priority,
-          type: fileData.type,
           status: FILE_STATUS.DRAFT,
-          puc_url: pucObjectName,
-          original_filename: pucFile.originalname,
-          mime_type: pucFile.mimetype,
+
           created_by: user.id,
           department_id: user.department_id,
 
@@ -76,35 +63,6 @@ class FileService {
         },
         { transaction },
       );
-
-      // Save Attachments
-      if (attachments && attachments.length > 0) {
-        await Promise.all(
-          attachments.map(async (file) => {
-            const attExt = path.extname(file.originalname);
-            const attSuffix = `${Date.now()}-${Math.round(Math.random() * 1e4)}`;
-            const attObjectName = `files/${year}/${deptCode}/attachments/${attSuffix}${attExt}`;
-
-            await minioClient.putObject(
-              BUCKET_NAME,
-              attObjectName,
-              file.buffer,
-            );
-
-            return FileAttachment.create(
-              {
-                file_id: newFile.id,
-                original_name: file.originalname,
-                file_key: attObjectName,
-                file_url: attObjectName,
-                mime_type: file.mimetype,
-                file_size: file.size,
-              },
-              { transaction },
-            );
-          }),
-        );
-      }
 
       // Initial Movement Log
       await FileMovement.create(
@@ -127,7 +85,6 @@ class FileService {
         include: [
           { model: Department, as: "department" },
           { model: User, as: "creator" },
-          { model: FileAttachment, as: "attachments" },
           { model: Designation, as: "currentDesignation" },
           { model: Department, as: "currentDepartment" },
           { model: User, as: "currentHolder" },
@@ -139,67 +96,6 @@ class FileService {
       await transaction.rollback();
       throw error;
     }
-  }
-
-  async addAttachment(fileId, files, currentUser) {
-    const fileMaster = await FileMaster.findByPk(fileId);
-    if (!fileMaster) throw new AppError("File not found", 404);
-
-    // Permission Check
-    if (fileMaster.current_holder_id !== currentUser.id) {
-      throw new AppError(
-        "You can only add attachments to files you hold.",
-        403,
-      );
-    }
-
-    if (!Array.isArray(files) || files.length === 0) {
-      throw new AppError("At least one attachment file is required.", 400);
-    }
-
-    const year = new Date().getFullYear();
-
-    const createdAttachments = [];
-    for (const file of files) {
-      const attExt = path.extname(file.originalname);
-      const attSuffix = `${Date.now()}-${Math.round(Math.random() * 1e4)}`;
-      const attObjectName = `files/${year}/attachments/${attSuffix}${attExt}`;
-
-      await minioClient.putObject(BUCKET_NAME, attObjectName, file.buffer);
-
-      const newAttachment = await FileAttachment.create({
-        file_id: fileMaster.id,
-        original_name: file.originalname,
-        file_key: attObjectName,
-        file_url: attObjectName,
-        mime_type: file.mimetype,
-        file_size: file.size,
-      });
-
-      createdAttachments.push(newAttachment);
-    }
-
-    return createdAttachments;
-  }
-
-  async removeAttachment(attachmentId, currentUser) {
-    const attachment = await FileAttachment.findByPk(attachmentId, {
-      include: [{ model: FileMaster, as: "masterFile" }],
-    });
-
-    if (!attachment) throw new AppError("Attachment not found", 404);
-
-    // Permission Check
-    if (attachment.masterFile.current_holder_id !== currentUser.id) {
-      throw new AppError(
-        "You can only remove attachments from files you hold.",
-        403,
-      );
-    }
-
-    await attachment.destroy();
-
-    return { message: "Attachment removed successfully" };
   }
 
   // ... existing imports
@@ -252,16 +148,9 @@ class FileService {
           },
           { model: Department, as: "currentDepartment", attributes: ["name"] },
           { model: User, as: "currentHolder", attributes: ["full_name"] },
-          { model: FileAttachment, as: "attachments" },
-
           {
             model: FileMovement,
             as: "movements",
-            where: {
-              action: {
-                [Op.in]: ["FORWARD", "CREATED", "VERIFY"], // Consider VERIFY for latest action as well
-              },
-            },
             order: [["id", "DESC"]],
             include: [
               {
@@ -276,8 +165,18 @@ class FileService {
                   },
                 ],
               },
+              {
+                model: FileAttachment,
+                as: "attachments",
+                attributes: [
+                  "id",
+                  "original_name",
+                  "file_url",
+                  "mime_type",
+                  "file_size",
+                ],
+              },
             ],
-            attributes: ["id", "action", "remarks", "createdAt", "sent_by"],
           },
         ],
       });
@@ -292,30 +191,7 @@ class FileService {
         });
       }
 
-      const data = files.map((file) => {
-       if (file.movements && file.movements.length > 0) {
-            // Sort just in case the DB order wasn't strict
-            file.movements.sort((a, b) => b.id - a.id);
-
-            // A. The Remark comes from the absolute latest action (e.g., "Verified via PIN")
-            const latestAction = file.movements[0];
-
-            // B. The Sender comes from the latest "FORWARD" or "CREATED" action
-            // (Skipping "VERIFY" so your own name doesn't appear as sender)
-            const senderAction = file.movements.find(m => 
-                m.action === "FORWARD" || m.action === "CREATED"
-            );
-
-            // C. Combine them for the DTO
-            file.latestMovement = {
-                ...latestAction.toJSON(), // Use Remark/Date from Latest
-                sender: senderAction ? senderAction.sender : latestAction.sender // Use Sender from Forwarder
-            };
-        } else {
-            file.latestMovement = null;
-        }
-        return new FileResponseDto(file);
-      });
+      const data = files.map((file) => new FileResponseDto(file));
 
       return { data, nextCursor };
     } catch (error) {
@@ -374,7 +250,6 @@ class FileService {
         {
           model: FileMovement,
           as: "movements",
-          attributes: ["id", "action", "remarks", "createdAt", "sent_by"],
           include: [
             {
               model: User,
@@ -382,6 +257,17 @@ class FileService {
               attributes: ["full_name"],
               include: [
                 { model: Designation, as: "designation", attributes: ["name"] },
+              ],
+            },
+            {
+              model: FileAttachment,
+              as: "attachments",
+              attributes: [
+                "id",
+                "original_name",
+                "file_url",
+                "mime_type",
+                "file_size",
               ],
             },
           ],
@@ -399,16 +285,7 @@ class FileService {
       });
     }
 
-    const filesWithRemark = files.map((f) => {
-      if (f.movements && f.movements.length > 0) {
-        f.movements.sort((a, b) => b.id - a.id); // Sort Descending by ID
-        f.latestMovement = f.movements[0];
-      } else {
-        f.latestMovement = null;
-      }
-      return new FileResponseDto(f);
-    });
-
+    const filesWithRemark = files.map((f) => new FileResponseDto(f));
     return { data: filesWithRemark, nextCursor };
   }
 
@@ -416,6 +293,7 @@ class FileService {
     const limitNum = parseInt(limit) || 20;
     const cursorId = cursor ? parseInt(cursor) : 0;
 
+    // 1. Just fetch the basic File info (No movements here!)
     const file = await FileMaster.findByPk(fileId, {
       include: [
         { model: Department, as: "department", attributes: ["name"] },
@@ -423,7 +301,6 @@ class FileService {
         { model: User, as: "currentHolder", attributes: ["full_name"] },
         { model: Designation, as: "currentDesignation", attributes: ["name"] },
         { model: Department, as: "currentDepartment", attributes: ["name"] },
-        { model: FileAttachment, as: "attachments" },
         { model: User, as: "verifier", attributes: ["full_name"] },
       ],
     });
@@ -432,6 +309,7 @@ class FileService {
       throw new AppError("File not found", 404);
     }
 
+    // 2. Fetch the paginated thread (Movements)
     const movementWhere = { file_id: fileId };
     if (cursorId > 0) {
       movementWhere.id = { [Op.gt]: cursorId }; // Fetch newer movements than cursor
@@ -450,11 +328,14 @@ class FileService {
           ],
         },
         {
-          model: User,
-          as: "receiver",
-          attributes: ["full_name"],
-          include: [
-            { model: Designation, as: "designation", attributes: ["name"] },
+          model: FileAttachment,
+          as: "attachments",
+          attributes: [
+            "id",
+            "original_name",
+            "file_url",
+            "mime_type",
+            "file_size",
           ],
         },
       ],
@@ -464,25 +345,24 @@ class FileService {
     let nextCursor = null;
     if (movements.length > limitNum) {
       movements.pop();
-      // For history, nextCursor is just the ID of the last item returned
       nextCursor = movements[movements.length - 1].id;
     }
 
+    // 3. Attach and map
+    file.movements = movements;
+    const formattedData = new FileResponseDto(file);
+
     return {
       data: {
-        file: new FileResponseDto(file),
-        history: movements.map((move) => ({
-          id: move.id,
-          action: move.action,
-          remarks: move.remarks,
-          from: move.sender ? move.sender.full_name : "System",
-          to: move.receiver ? move.receiver.full_name : "System",
-          senderDesignation: move.sender?.designation?.name,
-          receiverDesignation: move.receiver?.designation?.name,
-          date: new Date(move.createdAt).toLocaleString("en-IN", {
-            timeZone: "Asia/Kolkata",
-          }),
-        })),
+        fileInfo: {
+          id: formattedData.id,
+          subject: formattedData.subject,
+          fileNumber: formattedData.fileNumber,
+          status: formattedData.status,
+          currentHolder: formattedData.currentHolder,
+          currentPosition: formattedData.currentPosition,
+        },
+        history: formattedData.thread,
       },
       nextCursor,
     };
@@ -490,7 +370,7 @@ class FileService {
 
   async searchFiles(query, user) {
     // Changed arg name to 'query' to match usage
-    const { text, status, priority, type } = query;
+    const { text, status, priority } = query;
     const whereClause = {
       // 🚨 SECURITY: Force User's Department (unless you are implementing Global Admin Search later)
       department_id: user.department_id,
@@ -505,7 +385,6 @@ class FileService {
 
     if (status) whereClause.status = status;
     if (priority) whereClause.priority = priority;
-    if (type) whereClause.type = type;
 
     const files = await FileMaster.findAll({
       where: whereClause,
@@ -526,26 +405,6 @@ class FileService {
     return files.map((file) => new FileResponseDto(file));
   }
 
-  async getDashboardStats(user) {
-    // Changed arg to 'user' object, not just userId
-    // 🚨 CORRECTED: Count based on POSITION
-    const pendingCount = await FileMaster.count({
-      where: {
-        current_designation_id: user.designation_id,
-        current_department_id: user.department_id,
-      },
-    });
-
-    const createdCount = await FileMaster.count({
-      where: { created_by: user.id },
-    });
-
-    return {
-      pending: pendingCount,
-      created: createdCount,
-    };
-  }
-
   /**
    * Helper: Check Download Permission
    * logic: Allow if User is Creator OR Current Holder OR in the same Department
@@ -563,33 +422,6 @@ class FileService {
 
     // Allow if any of these are true
     return isCreator || isHolder || isSameDept;
-  }
-
-  /**
-   * 1. Download PUC (Main File)
-   */
-  async downloadPuc(fileId, user) {
-    const file = await FileMaster.findByPk(fileId);
-    if (!file) throw new AppError("File not found", 404);
-
-    if (!this._hasDownloadAccess(file, user)) {
-      throw new AppError(
-        "You do not have permission to download this file.",
-        403,
-      );
-    }
-
-    try {
-      const stream = await minioClient.getObject(BUCKET_NAME, file.puc_url);
-      return {
-        stream,
-        filename: file.original_filename,
-        mimeType: file.mime_type || "application/pdf",
-      };
-    } catch (err) {
-      console.error("MinIO Error:", err);
-      throw new AppError("Error retrieving file from storage.", 500);
-    }
   }
 
   /**

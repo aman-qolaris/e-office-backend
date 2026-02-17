@@ -1,5 +1,6 @@
 import Joi from "joi";
 import { MOVEMENT_ACTIONS } from "../../../../config/constants.js";
+import AppError from "../../../../utils/AppError.js";
 
 class MoveFileRequestDto {
   static schema = Joi.object({
@@ -26,7 +27,7 @@ class MoveFileRequestDto {
 
     pin: Joi.string()
       .pattern(/^\d{4}$/)
-      .optional() // It is optional because FORWARD doesn't need it
+      .required()
       .messages({ "string.pattern.base": "PIN must be exactly 4 digits" }),
   });
 
@@ -35,7 +36,8 @@ class MoveFileRequestDto {
       abortEarly: false,
     });
     if (error) {
-      throw new Error(error.details.map((d) => d.message).join(", "));
+      const errorMessage = error.details.map((d) => d.message).join(", ");
+      throw new AppError(errorMessage, 400);
     }
     return value;
   }
