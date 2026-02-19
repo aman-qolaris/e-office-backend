@@ -9,7 +9,7 @@ class WorkflowController {
       const moveData = MoveFileRequestDto.validate(req.body);
 
       const attachments = req.files || [];
-
+console.log("FILES RECEIVED BY MULTER:", req.files);
       if (attachments.length > 10) {
         throw new AppError(
           "You can only attach a maximum of 10 files at a time.",
