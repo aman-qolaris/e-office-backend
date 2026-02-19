@@ -26,7 +26,7 @@ const decodeCursor = (cursor) => {
 };
 
 class FileService {
-  async createFile(fileData, user) {
+async createFile(fileData, user) {
     const transaction = await sequelize.transaction();
 
     try {
@@ -52,7 +52,7 @@ class FileService {
           created_by: user.id,
           department_id: user.department_id,
 
-          // 🚨 Position-Based Fields
+          // 🚨 Position-Based Fields (Creator is the initial holder)
           current_holder_id: user.id,
           current_designation_id: user.designation_id,
           current_department_id: user.department_id,
@@ -79,6 +79,8 @@ class FileService {
         { transaction },
       );
 
+      // 🟢 The rogue update block used to be here. It is now gone!
+
       await transaction.commit();
 
       await newFile.reload({
@@ -104,10 +106,10 @@ class FileService {
       const limitNum = parseInt(limit) || 10;
       const decodedCursor = cursor ? decodeCursor(cursor) : null;
 
-      // Base Condition
+      // 🟢 THE FIX: Base Condition now strictly checks 'current_holder_id'
       const whereClause = {
-        current_designation_id: user.designation_id,
-        current_department_id: user.department_id,
+        current_holder_id: user.id, // Only fetch files currently held by THIS specific user
+        
         [Op.and]: [
           {
             [Op.or]: [
@@ -199,7 +201,6 @@ class FileService {
       throw error;
     }
   }
-
   async getOutbox(user, { limit = 10, cursor = null } = {}) {
     const limitNum = parseInt(limit) || 10;
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
@@ -328,6 +329,14 @@ class FileService {
           ],
         },
         {
+          model: User,
+          as: "receiver",
+          attributes: ["full_name"],
+          include: [
+            { model: Designation, as: "designation", attributes: ["name"] },
+          ],
+        },
+        {
           model: FileAttachment,
           as: "attachments",
           attributes: [
@@ -358,6 +367,7 @@ class FileService {
           id: formattedData.id,
           subject: formattedData.subject,
           fileNumber: formattedData.fileNumber,
+          priority: formattedData.priority,
           status: formattedData.status,
           currentHolder: formattedData.currentHolder,
           currentPosition: formattedData.currentPosition,
@@ -370,7 +380,7 @@ class FileService {
 
   async searchFiles(query, user) {
     // Changed arg name to 'query' to match usage
-    const { text, status, priority } = query;
+    const { text, status, priority, startDate, endDate } = query;
     const whereClause = {
       // 🚨 SECURITY: Force User's Department (unless you are implementing Global Admin Search later)
       department_id: user.department_id,
@@ -385,6 +395,19 @@ class FileService {
 
     if (status) whereClause.status = status;
     if (priority) whereClause.priority = priority;
+
+if (startDate && endDate) {
+      // If both dates are provided, search between them (append time to include the whole end day)
+      whereClause.createdAt = {
+        [Op.between]: [new Date(startDate), new Date(`${endDate}T23:59:59.999Z`)]
+      };
+    } else if (startDate) {
+      // Only start date provided (From this date onwards)
+      whereClause.createdAt = { [Op.gte]: new Date(startDate) };
+    } else if (endDate) {
+      // Only end date provided (Up to this date)
+      whereClause.createdAt = { [Op.lte]: new Date(`${endDate}T23:59:59.999Z`) };
+    }
 
     const files = await FileMaster.findAll({
       where: whereClause,

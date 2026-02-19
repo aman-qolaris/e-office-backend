@@ -66,7 +66,8 @@ class FileResponseDto {
         sender: move.sender ? move.sender.full_name : "System",
         senderDesignation: move.sender?.designation?.name || null,
         date: new Date(move.createdAt).toLocaleString("en-IN", options),
-
+       receiver: move.receiver ? move.receiver.full_name : null,
+        receiverDesignation: move.receiver?.designation?.name || null,
         // 🚨 Attachments are now tied specifically to THIS reply
         attachments: move.attachments
           ? move.attachments.map((att) => ({
@@ -85,6 +86,7 @@ class FileResponseDto {
       this.sentByDesignation = latest.senderDesignation;
       this.lastAction = latest.action;
       this.lastRemark = latest.remarks;
+      this.lastAttachments = latest.attachments;
     } else if (file.latestMovement) {
       // Fallback just in case a query only brings back `latestMovement`
       this.lastSender = file.latestMovement.sender
