@@ -108,8 +108,8 @@ async createFile(fileData, user) {
 
       // 🟢 THE FIX: Base Condition now strictly checks 'current_holder_id'
       const whereClause = {
-        current_holder_id: user.id, // Only fetch files currently held by THIS specific user
-        
+        current_designation_id: user.designation_id, 
+        current_department_id: user.department_id,        
         [Op.and]: [
           {
             [Op.or]: [
