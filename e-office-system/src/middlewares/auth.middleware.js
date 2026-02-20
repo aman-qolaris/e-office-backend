@@ -4,9 +4,11 @@ import { User, Designation, Department } from "../database/models/index.js";
 
 export const protect = async (req, res, next) => {
   try {
-    // 1. Get token from header
+    // Get token from cookie or header
     let token;
-    if (
+    if (req.cookies && req.cookies.jwt) {
+      token = req.cookies.jwt;
+    } else if (
       req.headers.authorization &&
       req.headers.authorization.startsWith("Bearer")
     ) {

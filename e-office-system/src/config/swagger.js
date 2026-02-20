@@ -26,14 +26,15 @@ const options = {
           scheme: "bearer",
           bearerFormat: "JWT", // We are using JSON Web Tokens
         },
+        cookieAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: "jwt",
+        },
       },
     },
     // This applies the security globally (optional, but good for defaults)
-    security: [
-      {
-        bearerAuth: [],
-      },
-    ],
+    security: [{ cookieAuth: [] }, { bearerAuth: [] }],
   },
   // 🚨 CRITICAL PART: This tells Swagger to look inside your route files for comments
   apis: ["./src/routes/*.js", "./src/modules/**/routes/*.routes.js"],

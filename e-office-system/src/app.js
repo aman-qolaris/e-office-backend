@@ -2,7 +2,9 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import morgan from "morgan";
+import cookieParser from "cookie-parser";
 import routes from "./routes/index.js";
+import { globalLimiter } from "./middlewares/rateLimiter.middleware.js";
 
 import swaggerUi from "swagger-ui-express";
 import swaggerSpecs from "./config/swagger.js";
@@ -11,9 +13,16 @@ const app = express();
 
 // 1. Global Middlewares
 app.use(helmet()); // Security Headers
-app.use(cors()); // Cross-Origin Resource Sharing
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL,
+    credentials: true,
+  }),
+);
+app.use("/api", globalLimiter);
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
+app.use(cookieParser());
 app.use(morgan("dev")); // HTTP Request Logger
 
 // This serves the interactive documentation at http://localhost:4000/api-docs
