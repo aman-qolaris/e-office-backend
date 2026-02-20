@@ -101,7 +101,7 @@ class AuthService {
 
     // 3. Update User (Hook will hash otp)
     user.reset_otp = otp;
-    user.reset_otp_expires = new Date(Date.now() + 5 * 60 * 1000); // 10 mins
+    user.reset_otp_expires = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
     await user.save();
 
     // 4. Send Notifications

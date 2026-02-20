@@ -1,4 +1,5 @@
 import path from "path";
+import fs from "fs";
 import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import {
   sequelize,
@@ -143,24 +144,39 @@ class WorkflowService {
             // Notice we put it in a specific movement folder
             const attObjectName = `files/${year}/${deptCode}/movements/${movement.id}/${attSuffix}${attExt}`;
 
-            await minioClient.putObject(
-              BUCKET_NAME,
-              attObjectName,
-              uploadFile.buffer,
-            );
+            try {
+              // 1. Create a read stream from the temporary file on disk
+              const fileStream = fs.createReadStream(uploadFile.path);
 
-            return FileAttachment.create(
-              {
-                file_id: file.id,
-                movement_id: movement.id,
-                original_name: uploadFile.originalname,
-                file_key: attObjectName,
-                file_url: attObjectName,
-                mime_type: uploadFile.mimetype,
-                file_size: uploadFile.size,
-              },
-              { transaction },
-            );
+              // 2. Upload to MinIO using the stream
+              await minioClient.putObject(
+                BUCKET_NAME,
+                attObjectName,
+                fileStream,
+                uploadFile.size,
+              );
+
+              // 3. Save to Database
+              return await FileAttachment.create(
+                {
+                  file_id: file.id,
+                  movement_id: movement.id,
+                  original_name: uploadFile.originalname,
+                  file_key: attObjectName,
+                  file_url: attObjectName,
+                  mime_type: uploadFile.mimetype,
+                  file_size: uploadFile.size,
+                },
+                { transaction },
+              );
+            } finally {
+              // 4. ALWAYS clean up the temporary file from disk, even if MinIO upload fails
+              if (fs.existsSync(uploadFile.path)) {
+                fs.unlink(uploadFile.path, (err) => {
+                  if (err) console.error("Failed to delete temp file:", err);
+                });
+              }
+            }
           }),
         );
       }

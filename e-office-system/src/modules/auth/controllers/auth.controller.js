@@ -11,11 +11,36 @@ class AuthController {
       const loginData = LoginRequestDto.validate(req.body);
       const authResponse = await AuthService.login(loginData);
 
+      const cookieOptions = {
+        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 Days
+        httpOnly: true, // Cannot be accessed via client-side scripts (XSS protection)
+        secure: process.env.NODE_ENV === "production", // Must be true in production (HTTPS only)
+        sameSite: "strict", // CSRF protection
+      };
+
+      res.cookie("jwt", authResponse.token, cookieOptions);
+
+      const { token, ...userData } = authResponse;
+
       res.status(200).json({
         success: true,
         message: "Login successful",
-        data: authResponse,
+        data: userData,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async logout(req, res, next) {
+    try {
+      res.cookie("jwt", "loggedout", {
+        expires: new Date(Date.now() + 10 * 1000), // Expire in 10 seconds
+        httpOnly: true,
+      });
+      res
+        .status(200)
+        .json({ success: true, message: "Logged out successfully" });
     } catch (error) {
       next(error);
     }

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import AuthController from "../controllers/auth.controller.js";
 import { protect } from "../../../middlewares/auth.middleware.js";
+import { authLimiter } from "../../../middlewares/rateLimiter.middleware.js";
 
 const router = Router();
 
@@ -38,8 +39,13 @@ const router = Router();
  *                 description: Strong password
  *                 example: "Admin@123"
  *     responses:
- *       '200':
- *         description: Login successful
+ *       "200":
+ *         description: Login successful (sets HttpOnly cookie "jwt")
+ *         headers:
+ *           Set-Cookie:
+ *             description: HttpOnly cookie containing the JWT token
+ *             schema:
+ *               type: string
  *         content:
  *           application/json:
  *             schema:
@@ -48,26 +54,151 @@ const router = Router();
  *                 success:
  *                   type: boolean
  *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Login successful
  *                 data:
  *                   type: object
  *                   properties:
- *                     token:
- *                       type: string
- *                       description: JWT Bearer Token
  *                     user:
  *                       type: object
  *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 1
  *                         fullName:
  *                           type: string
+ *                           example: Admin User
+ *                         phoneNumber:
+ *                           type: string
+ *                           example: "9876543210"
  *                         systemRole:
  *                           type: string
- *       '401':
+ *                           example: ADMIN
+ *                         designation:
+ *                           type: string
+ *                           nullable: true
+ *                           example: PRESIDENT
+ *                         department:
+ *                           type: string
+ *                           nullable: true
+ *                           example: IT Cell
+ *                         isPinSet:
+ *                           type: boolean
+ *                           example: false
+ *       "401":
  *         description: Invalid credentials
+ *       "403":
+ *         description: Account is disabled
+ *       "400":
+ *         description: Validation error (invalid phoneNumber/password format)
+ *       "429":
+ *         description: Too many authentication attempts
  */
-router.post("/login", AuthController.login);
+router.post("/login", authLimiter, AuthController.login);
 
-router.post("/forgot-password", AuthController.forgotPassword);
-router.post("/reset-password", AuthController.resetPassword);
+/**
+ * @openapi
+ * /auth/logout:
+ *   post:
+ *     summary: Logout of the system (clears HttpOnly cookie)
+ *     tags:
+ *       - Auth
+ *     responses:
+ *       "200":
+ *         description: Logged out successfully
+ *         headers:
+ *           Set-Cookie:
+ *             description: Clears the JWT cookie
+ *             schema:
+ *               type: string
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Logged out successfully
+ */
+router.post("/logout", AuthController.logout);
+
+/**
+ * @openapi
+ * /auth/forgot-password:
+ *   post:
+ *     summary: Request a password reset OTP/token
+ *     tags:
+ *       - Auth
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - phoneNumber
+ *             properties:
+ *               phoneNumber:
+ *                 type: string
+ *                 description: 10-digit Indian mobile number
+ *                 example: "9876543210"
+ *     responses:
+ *       "200":
+ *         description: Reset instructions sent
+ *       "400":
+ *         description: Validation error (invalid phoneNumber)
+ *       "404":
+ *         description: User not found
+ *       "429":
+ *         description: Too many authentication attempts
+ */
+router.post("/forgot-password", authLimiter, AuthController.forgotPassword);
+
+/**
+ * @openapi
+ * /auth/reset-password:
+ *   post:
+ *     summary: Reset password using OTP/token
+ *     tags:
+ *       - Auth
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - phoneNumber
+ *               - otp
+ *               - newPassword
+ *             properties:
+ *               phoneNumber:
+ *                 type: string
+ *                 example: "9876543210"
+ *               otp:
+ *                 type: string
+ *                 description: OTP/token received for password reset
+ *                 example: "123456"
+ *               newPassword:
+ *                 type: string
+ *                 format: password
+ *                 description: New strong password
+ *                 example: NewPass@123
+ *     responses:
+ *       "200":
+ *         description: Password reset successfully
+ *       "400":
+ *         description: Invalid or expired OTP/token
+ *       "404":
+ *         description: User not found
+ *       "429":
+ *         description: Too many authentication attempts
+ */
+router.post("/reset-password", authLimiter, AuthController.resetPassword);
 
 /**
  * @openapi
