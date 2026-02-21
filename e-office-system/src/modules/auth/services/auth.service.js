@@ -9,6 +9,7 @@ import AppError from "../../../utils/AppError.js";
 import crypto from "crypto";
 import notificationService from "../../../utils/notification.service.js";
 import { passwordResetTemplate } from "../../../utils/templates/emailTemplates.js";
+import redisClient from "../../../config/redis.js";
 
 class AuthService {
   async login(loginDto) {
@@ -99,10 +100,9 @@ class AuthService {
     // 2. Generate OTP
     const otp = crypto.randomInt(100000, 999999).toString();
 
-    // 3. Update User (Hook will hash otp)
-    user.reset_otp = otp;
-    user.reset_otp_expires = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
-    await user.save();
+    // 3. Save OTP to Redis with a 5-minute TTL (300 seconds)
+    // We prefix the key with 'reset_otp:' so it doesn't collide with other data
+    await redisClient.setEx(`reset_otp:${phoneNumber}`, 300, otp);
 
     // 4. Send Notifications
     const smsMessage = `Dear Member, your OTP for updating your password is ${otp}. The OTP is valid for 5 minutes. MMR`;
@@ -130,20 +130,20 @@ class AuthService {
       throw new AppError("User not found", 404);
     }
 
-    // 1. Validate OTP
-    const isValid = await user.validateResetOtp(otp);
-    if (!isValid) {
+    // 1. Fetch the OTP from Redis
+    const storedOtp = await redisClient.get(`reset_otp:${phoneNumber}`);
+
+    // 2. Validate OTP
+    // If storedOtp is null, it means it expired and Redis auto-deleted it
+    if (!storedOtp || storedOtp !== otp) {
       throw new AppError("Invalid or Expired OTP", 400);
     }
 
     // 2. Set New Password
     user.password = newPassword;
-
-    // 3. Clear OTP
-    user.reset_otp = null;
-    user.reset_otp_expires = null;
-
     await user.save();
+
+    await redisClient.del(`reset_otp:${phoneNumber}`);
 
     return { message: "Password reset successfully. You can now login." };
   }
