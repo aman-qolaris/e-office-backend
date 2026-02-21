@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import AppError from "../utils/AppError.js";
 import { User, Designation, Department } from "../database/models/index.js";
+import redisClient from "../config/redis.js";
 
 export const protect = async (req, res, next) => {
   try {
@@ -21,24 +22,52 @@ export const protect = async (req, res, next) => {
       );
     }
 
+    // ✅ REDIS BLACKLIST CHECK
+    const isBlacklisted = await redisClient.get(`blacklist:${token}`);
+    if (isBlacklisted) {
+      return next(
+        new AppError("Your session has ended. Please log in again.", 401),
+      );
+    }
+
     // 2. Verify Token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 3. Check if user still exists (Security Check)
-    const currentUser = await User.findByPk(decoded.id, {
-      include: [
-        { model: Designation, as: "designation" },
-        { model: Department, as: "department" },
-      ],
-    });
-    if (!currentUser) {
-      return next(
-        new AppError("The user belonging to this token no longer exists.", 401),
-      );
+    const cacheKey = `user:${decoded.id}`;
+
+    let currentUser = null;
+
+    // A. Check Redis First
+    const cachedUser = await redisClient.get(cacheKey);
+
+    if (cachedUser) {
+      // Lightning fast! Parse the string back into a JavaScript object
+      currentUser = JSON.parse(cachedUser);
+    } else {
+      // B. If not in cache, fetch from MySQL
+      currentUser = await User.findByPk(decoded.id, {
+        include: [
+          { model: Designation, as: "designation" },
+          { model: Department, as: "department" },
+        ],
+      });
+
+      if (!currentUser) {
+        return next(
+          new AppError(
+            "The user belonging to this token no longer exists.",
+            401,
+          ),
+        );
+      }
+
+      // C. Save to Redis for 1 Hour (3600 seconds)
+      await redisClient.setEx(cacheKey, 3600, JSON.stringify(currentUser));
     }
+
     if (currentUser.passwordChangedAt) {
       const changedTimestamp = parseInt(
-        currentUser.passwordChangedAt.getTime() / 1000,
+        new Date(currentUser.passwordChangedAt).getTime() / 1000,
         10,
       );
       if (decoded.iat < changedTimestamp) {

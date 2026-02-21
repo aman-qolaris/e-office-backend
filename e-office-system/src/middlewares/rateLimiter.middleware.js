@@ -1,4 +1,6 @@
 import rateLimit from "express-rate-limit";
+import RedisStore from "rate-limit-redis";
+import redisClient from "../config/redis.js";
 
 // 1. Global API Limiter (Generous limit for normal app usage)
 export const globalLimiter = rateLimit({
@@ -11,6 +13,9 @@ export const globalLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+  }),
 });
 
 // 2. Strict Auth Limiter (Crucial for Login, OTP, and Password Reset)
@@ -24,4 +29,8 @@ export const authLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+    prefix: "rl:auth:", // Gives these keys a specific prefix in Redis so they don't mix with global limits
+  }),
 });

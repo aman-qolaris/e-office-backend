@@ -8,6 +8,7 @@ import { Op } from "sequelize";
 import UserResponseDto from "../dtos/response/UserResponseDto.js";
 import AppError from "../../../utils/AppError.js";
 import { DESIGNATIONS, ROLES } from "../../../config/constants.js";
+import redisClient from "../../../config/redis.js";
 
 class UserService {
   async createUser(data) {
@@ -201,6 +202,8 @@ class UserService {
 
       await transaction.commit(); // 6. Commit
 
+      await redisClient.del(`user:${userId}`);
+
       await user.reload({ include: ["department", "designation"] });
       return new UserResponseDto(user);
     } catch (error) {
@@ -245,17 +248,30 @@ class UserService {
   }
 
   async getAllDepartments() {
+    // 1. Check if data exists in Redis cache
+    const cachedDepartments = await redisClient.get("departments:all");
+    if (cachedDepartments) {
+      return JSON.parse(cachedDepartments); // Return lightning-fast cached data
+    }
+
     // Fetch only ID and Name to keep it lightweight for dropdowns
     const departments = await Department.findAll({
       attributes: ["id", "name"],
       where: { is_active: true }, // Optional: Only show active depts
     });
+
+    // 3. Save the result to Redis for future requests
+    // setEx saves it with a time-to-live. 86400 seconds = 24 hours.
+    await redisClient.setEx(
+      "departments:all",
+      86400,
+      JSON.stringify(departments),
+    );
+
     return departments;
   }
 
   async getAllDesignations(currentUser) {
-    const whereClause = { is_active: true };
-
     let showSystemAdmin = false;
 
     if (
@@ -265,15 +281,33 @@ class UserService {
       showSystemAdmin = true;
     }
 
+    // Define cache key based on role context
+    const cacheKey = showSystemAdmin
+      ? "designations:president"
+      : "designations:standard";
+
+    // 1. Check Redis cache
+    const cachedDesignations = await redisClient.get(cacheKey);
+    if (cachedDesignations) {
+      return JSON.parse(cachedDesignations);
+    }
+
+    // 2. Fetch from MySQL
+    const whereClause = { is_active: true };
     if (!showSystemAdmin) {
       whereClause.name = { [Op.ne]: DESIGNATIONS.SYSTEM_ADMIN };
     }
 
-    return await Designation.findAll({
+    const designations = await Designation.findAll({
       where: whereClause,
       attributes: ["id", "name", "level"],
       order: [["level", "DESC"]],
     });
+
+    // 3. Save to Redis
+    await redisClient.setEx(cacheKey, 86400, JSON.stringify(designations));
+
+    return designations;
   }
 
   async createDepartment(data) {
@@ -291,6 +325,8 @@ class UserService {
       description: data.description,
       is_active: true,
     });
+
+    await redisClient.del("departments:all");
 
     return newDept;
   }
@@ -313,6 +349,8 @@ class UserService {
       level: data.level,
       is_active: true,
     });
+
+    await redisClient.del(["designations:president", "designations:standard"]);
 
     return newDesig;
   }

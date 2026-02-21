@@ -4,6 +4,8 @@ import ChangePasswordRequestDto from "../dtos/request/ChangePasswordRequestDto.j
 import SetPinRequestDto from "../dtos/request/SetPinRequestDto.js";
 import ForgotPasswordRequestDto from "../dtos/request/ForgotPasswordRequestDto.js";
 import ResetPasswordRequestDto from "../dtos/request/ResetPasswordRequestDto.js";
+import redisClient from "../../../config/redis.js";
+import jwt from "jsonwebtoken";
 
 class AuthController {
   async login(req, res, next) {
@@ -34,10 +36,37 @@ class AuthController {
 
   async logout(req, res, next) {
     try {
+      // 1. Extract the token from cookies or headers
+      let token;
+      if (req.cookies && req.cookies.jwt) {
+        token = req.cookies.jwt;
+      } else if (
+        req.headers.authorization &&
+        req.headers.authorization.startsWith("Bearer")
+      ) {
+        token = req.headers.authorization.split(" ")[1];
+      }
+
+      // 2. If a valid token exists, add it to the Redis blacklist
+      if (token && token !== "loggedout") {
+        const decoded = jwt.decode(token); // Decode without verifying just to read the expiration
+
+        if (decoded && decoded.exp) {
+          // Calculate remaining time in seconds
+          const timeToLive = decoded.exp - Math.floor(Date.now() / 1000);
+
+          // Only blacklist if it hasn't already expired
+          if (timeToLive > 0) {
+            await redisClient.setEx(`blacklist:${token}`, timeToLive, "true");
+          }
+        }
+      }
+
       res.cookie("jwt", "loggedout", {
         expires: new Date(Date.now() + 10 * 1000), // Expire in 10 seconds
         httpOnly: true,
       });
+
       res
         .status(200)
         .json({ success: true, message: "Logged out successfully" });
