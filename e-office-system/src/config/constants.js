@@ -29,12 +29,6 @@ export const PRIORITY = {
   HIGH: "HIGH",
 };
 
-export const FILE_TYPES = {
-  GENERIC: "GENERIC",
-  FINANCIAL: "FINANCIAL",
-  POLICY: "POLICY",
-};
-
 export const MOVEMENT_ACTIONS = {
   CREATED: "CREATED",
   FORWARD: "FORWARD",

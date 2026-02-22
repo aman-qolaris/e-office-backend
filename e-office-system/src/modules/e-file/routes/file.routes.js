@@ -16,6 +16,60 @@ router.use(protect);
 
 /**
  * @openapi
+ * /files/drafts:
+ *   get:
+ *     summary: Get my Drafts (Files I created but haven't forwarded)
+ *     tags:
+ *       - Files
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Page size
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *           nullable: true
+ *         description: Base64 cursor returned from previous response (nextCursor)
+ *     responses:
+ *       "200":
+ *         description: List of files currently in the user's drafts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Drafts fetched successfully
+ *                 count:
+ *                   type: integer
+ *                   example: 1
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 nextCursor:
+ *                   type: string
+ *                   nullable: true
+ *                   description: Cursor for the next page (pass as cursor query param)
+ *       "401":
+ *         description: Unauthorized
+ */
+router.get("/drafts", FileController.getDrafts);
+
+/**
+ * @openapi
  * /files/inbox:
  *   get:
  *     summary: Get my Inbox (Pending Files)
@@ -38,7 +92,7 @@ router.use(protect);
  *           type: string
  *         description: Base64 cursor returned from previous response (nextCursor)
  *     responses:
- *       '200':
+ *       "200":
  *         description: List of files currently held by the user's position (designation + department)
  *         content:
  *           application/json:
@@ -62,7 +116,7 @@ router.use(protect);
  *                   type: string
  *                   nullable: true
  *                   description: Cursor for the next page (pass as cursor query param)
- *       '401':
+ *       "401":
  *         description: Unauthorized
  */
 
@@ -92,7 +146,7 @@ router.get("/inbox", FileController.getInbox);
  *           type: string
  *         description: Base64 cursor returned from previous response (nextCursor)
  *     responses:
- *       '200':
+ *       "200":
  *         description: List of files the user has sent/moved away
  *         content:
  *           application/json:
@@ -116,7 +170,7 @@ router.get("/inbox", FileController.getInbox);
  *                   type: string
  *                   nullable: true
  *                   description: Cursor for the next page (pass as cursor query param)
- *       '401':
+ *       "401":
  *         description: Unauthorized
  */
 router.get("/outbox", FileController.getOutbox);
@@ -152,7 +206,7 @@ router.get("/outbox", FileController.getOutbox);
  *             - MEDIUM
  *             - HIGH
  *     responses:
- *       '200':
+ *       "200":
  *         description: Search results (department-scoped)
  *         content:
  *           application/json:
@@ -172,7 +226,7 @@ router.get("/outbox", FileController.getOutbox);
  *                   type: array
  *                   items:
  *                     type: object
- *       '401':
+ *       "401":
  *         description: Unauthorized
  */
 router.get("/search", FileController.searchFiles);
@@ -208,7 +262,7 @@ router.get("/search", FileController.searchFiles);
  *           nullable: true
  *         description: Movement ID cursor returned from previous response (nextCursor)
  *     responses:
- *       '200':
+ *       "200":
  *         description: Audit trail of the file
  *         content:
  *           application/json:
@@ -227,9 +281,9 @@ router.get("/search", FileController.searchFiles);
  *                   type: integer
  *                   nullable: true
  *                   description: Cursor for the next page (pass as cursor query param)
- *       '401':
+ *       "401":
  *         description: Unauthorized
- *       '404':
+ *       "404":
  *         description: File not found
  */
 router.get("/:id/history", FileController.getFileHistory);
@@ -265,7 +319,7 @@ router.get("/:id/history", FileController.getFileHistory);
  *                 enum: [LOW, MEDIUM, HIGH]
  *                 default: LOW
  *     responses:
- *       '201':
+ *       "201":
  *         description: File created successfully
  *         content:
  *           application/json:
@@ -280,11 +334,11 @@ router.get("/:id/history", FileController.getFileHistory);
  *                   example: e-File created successfully
  *                 data:
  *                   type: object
- *       '400':
+ *       "400":
  *         description: Validation error
- *       '401':
+ *       "401":
  *         description: Unauthorized
- *       '500':
+ *       "500":
  *         description: Internal Server Error
  */
 
@@ -307,7 +361,7 @@ router.post("/", FileController.createFile);
  *           type: integer
  *         description: Attachment ID
  *     responses:
- *       '200':
+ *       "200":
  *         description: Attachment file stream
  *         content:
  *           application/pdf:
@@ -318,13 +372,13 @@ router.post("/", FileController.createFile);
  *             schema:
  *               type: string
  *               format: binary
- *       '403':
+ *       "403":
  *         description: Forbidden
- *       '401':
+ *       "401":
  *         description: Unauthorized
- *       '404':
+ *       "404":
  *         description: Attachment not found
- *       '500':
+ *       "500":
  *         description: Internal Server Error
  */
 router.get(

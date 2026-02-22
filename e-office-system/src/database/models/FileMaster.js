@@ -1,6 +1,6 @@
 import { DataTypes, Model } from "sequelize";
 import sequelize from "../../config/database.js";
-import { FILE_STATUS, PRIORITY, FILE_TYPES } from "../../config/constants.js";
+import { FILE_STATUS, PRIORITY } from "../../config/constants.js";
 
 class FileMaster extends Model {}
 

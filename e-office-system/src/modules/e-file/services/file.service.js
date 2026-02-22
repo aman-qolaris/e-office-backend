@@ -26,7 +26,7 @@ const decodeCursor = (cursor) => {
 };
 
 class FileService {
-async createFile(fileData, user) {
+  async createFile(fileData, user) {
     const transaction = await sequelize.transaction();
 
     try {
@@ -100,6 +100,58 @@ async createFile(fileData, user) {
     }
   }
 
+  async getDrafts(user, { limit = 10, cursor = null } = {}) {
+    const limitNum = parseInt(limit) || 10;
+    const decodedCursor = cursor ? decodeCursor(cursor) : null;
+
+    const whereClause = {
+      current_holder_id: user.id,
+      status: FILE_STATUS.DRAFT, // Strictly only drafts
+    };
+
+    if (decodedCursor) {
+      whereClause[Op.and] = [
+        {
+          [Op.or]: [
+            { updatedAt: { [Op.lt]: decodedCursor.updatedAt } },
+            {
+              updatedAt: decodedCursor.updatedAt,
+              id: { [Op.lt]: decodedCursor.id },
+            },
+          ],
+        },
+      ];
+    }
+
+    const files = await FileMaster.findAll({
+      where: whereClause,
+      limit: limitNum + 1,
+      order: [
+        ["updatedAt", "DESC"],
+        ["id", "DESC"],
+      ],
+      include: [
+        { model: User, as: "creator", attributes: ["full_name"] },
+        { model: Department, as: "department", attributes: ["name"] },
+        { model: Designation, as: "currentDesignation", attributes: ["name"] },
+        { model: Department, as: "currentDepartment", attributes: ["name"] },
+      ],
+    });
+
+    let nextCursor = null;
+    if (files.length > limitNum) {
+      files.pop();
+      const lastItem = files[files.length - 1];
+      nextCursor = encodeCursor({
+        updatedAt: lastItem.updatedAt,
+        id: lastItem.id,
+      });
+    }
+
+    const data = files.map((file) => new FileResponseDto(file));
+    return { data, nextCursor };
+  }
+
   // ... existing imports
   async getInbox(user, { limit = 10, cursor = null } = {}) {
     try {
@@ -108,12 +160,12 @@ async createFile(fileData, user) {
 
       // 🟢 THE FIX: Base Condition now strictly checks 'current_holder_id'
       const whereClause = {
-        current_designation_id: user.designation_id, 
-        current_department_id: user.department_id,        
+        current_designation_id: user.designation_id,
+        current_department_id: user.department_id,
         [Op.and]: [
           {
             [Op.or]: [
-              { status: { [Op.ne]: "CLOSED" } },
+              { status: { [Op.ne]: ["CLOSED"] } },
               { status: { [Op.is]: null } },
             ],
           },
@@ -396,17 +448,22 @@ async createFile(fileData, user) {
     if (status) whereClause.status = status;
     if (priority) whereClause.priority = priority;
 
-if (startDate && endDate) {
+    if (startDate && endDate) {
       // If both dates are provided, search between them (append time to include the whole end day)
       whereClause.createdAt = {
-        [Op.between]: [new Date(startDate), new Date(`${endDate}T23:59:59.999Z`)]
+        [Op.between]: [
+          new Date(startDate),
+          new Date(`${endDate}T23:59:59.999Z`),
+        ],
       };
     } else if (startDate) {
       // Only start date provided (From this date onwards)
       whereClause.createdAt = { [Op.gte]: new Date(startDate) };
     } else if (endDate) {
       // Only end date provided (Up to this date)
-      whereClause.createdAt = { [Op.lte]: new Date(`${endDate}T23:59:59.999Z`) };
+      whereClause.createdAt = {
+        [Op.lte]: new Date(`${endDate}T23:59:59.999Z`),
+      };
     }
 
     const files = await FileMaster.findAll({

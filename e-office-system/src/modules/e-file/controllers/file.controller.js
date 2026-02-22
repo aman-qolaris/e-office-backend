@@ -1,7 +1,5 @@
 import FileService from "../services/file.service.js";
 import CreateFileRequestDto from "../dtos/request/CreateFileRequestDto.js";
-import AppError from "../../../utils/AppError.js";
-
 class FileController {
   async createFile(req, res, next) {
     try {
@@ -17,6 +15,24 @@ class FileController {
         success: true,
         message: "e-File created successfully",
         data: newFile,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getDrafts(req, res, next) {
+    try {
+      const { limit, cursor } = req.query;
+
+      const result = await FileService.getDrafts(req.user, { limit, cursor });
+
+      res.status(200).json({
+        success: true,
+        message: "Drafts fetched successfully",
+        count: result.data.length,
+        data: result.data,
+        nextCursor: result.nextCursor,
       });
     } catch (error) {
       next(error);
