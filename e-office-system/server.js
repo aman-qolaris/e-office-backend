@@ -1,7 +1,9 @@
 import "dotenv/config"; // Automatically loads .env
+import http from "http"; // <-- Added to create a server for Socket.io
 import app from "./src/app.js"; // Note the .js extension is mandatory in ESM
 import { sequelize } from "./src/database/models/index.js"; // Will enable later
 import { initMinio } from "./src/config/minio.js";
+import { initSocket } from "./src/config/socket.js";
 
 const PORT = process.env.PORT || 4000;
 
@@ -21,7 +23,13 @@ const startServer = async () => {
 
     await initMinio();
 
-    app.listen(PORT, () => {
+    // 1. Create an HTTP server and wrap your Express app inside it
+    const server = http.createServer(app);
+
+    // 2. Initialize Socket.io and attach it to the HTTP server
+    await initSocket(server);
+
+    server.listen(PORT, () => {
       console.log(`
             ################################################
             🚀 Server running on http://localhost:${PORT}

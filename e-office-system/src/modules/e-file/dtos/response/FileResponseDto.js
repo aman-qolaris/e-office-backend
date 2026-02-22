@@ -57,7 +57,7 @@ class FileResponseDto {
       file.movements.length > 0
     ) {
       // Sort chronologically (oldest to newest) so it reads like a chat
-      const sortedMovements = file.movements.sort((a, b) => a.id - b.id);
+      const sortedMovements = [...file.movements].sort((a, b) => a.id - b.id);
 
       this.thread = sortedMovements.map((move) => ({
         id: move.id,
@@ -66,7 +66,7 @@ class FileResponseDto {
         sender: move.sender ? move.sender.full_name : "System",
         senderDesignation: move.sender?.designation?.name || null,
         date: new Date(move.createdAt).toLocaleString("en-IN", options),
-       receiver: move.receiver ? move.receiver.full_name : null,
+        receiver: move.receiver ? move.receiver.full_name : null,
         receiverDesignation: move.receiver?.designation?.name || null,
         // 🚨 Attachments are now tied specifically to THIS reply
         attachments: move.attachments

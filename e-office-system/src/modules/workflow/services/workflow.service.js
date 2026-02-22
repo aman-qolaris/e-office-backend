@@ -16,6 +16,7 @@ import {
   DESIGNATIONS,
 } from "../../../config/constants.js";
 import AppError from "../../../utils/AppError.js";
+import { getIO } from "../../../config/socket.js";
 
 class WorkflowService {
   async moveFile(fileId, moveData, currentUser, attachments = []) {
@@ -183,6 +184,29 @@ class WorkflowService {
 
       // 6. Commit Transaction
       await transaction.commit();
+
+      // --- 7. FIRE REAL-TIME SOCKET NOTIFICATION ---
+      try {
+        const io = getIO();
+        // Emit to a specific room named after the receiver's ID
+        // The frontend will be listening to "new_file_received"
+        io.to(`user_${moveData.receiverId}`).emit("new_file_received", {
+          message: "A new file has been forwarded to you.",
+          fileId: file.id,
+          action: moveData.action,
+          senderId: currentUser.id,
+        });
+        console.log(
+          `✅ Real-time notification sent to user_${moveData.receiverId}`,
+        );
+      } catch (socketError) {
+        console.error(
+          "❌ Socket emission failed (but file was moved):",
+          socketError,
+        );
+        // We catch the error here so that if the socket fails for any reason,
+        // it doesn't break the successful file movement response.
+      }
 
       return {
         message: "File moved successfully",
