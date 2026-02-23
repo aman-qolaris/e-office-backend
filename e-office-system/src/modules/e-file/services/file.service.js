@@ -210,7 +210,7 @@ class FileService {
               {
                 model: User,
                 as: "sender",
-                attributes: ["full_name"],
+                attributes: ["full_name", "signature_url"],
                 include: [
                   {
                     model: Designation,
@@ -307,7 +307,7 @@ class FileService {
             {
               model: User,
               as: "sender",
-              attributes: ["full_name"],
+              attributes: ["full_name", "signature_url"],
               include: [
                 { model: Designation, as: "designation", attributes: ["name"] },
               ],
@@ -375,7 +375,7 @@ class FileService {
         {
           model: User,
           as: "sender",
-          attributes: ["full_name"],
+          attributes: ["full_name", "signature_url"],
           include: [
             { model: Designation, as: "designation", attributes: ["name"] },
           ],

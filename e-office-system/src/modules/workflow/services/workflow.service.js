@@ -24,6 +24,7 @@ class WorkflowService {
 
     try {
       // 1. Find the File
+      const dbUser = await User.findByPk(currentUser.id);
       const file = await FileMaster.findByPk(fileId);
       if (!file) {
         throw new AppError("File not found", 404);
@@ -61,7 +62,7 @@ class WorkflowService {
           );
         }
 
-        const isPinValid = await currentUser.validatePin(moveData.pin);
+       const isPinValid = await dbUser.validatePin(moveData.pin);
         if (!isPinValid) {
           throw new AppError("Invalid Security PIN.", 400);
         }
