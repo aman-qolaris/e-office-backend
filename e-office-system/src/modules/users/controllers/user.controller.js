@@ -1,3 +1,4 @@
+import fs from "fs";
 import UserService from "../services/user.service.js";
 import CreateUserRequestDto from "../dtos/request/CreateUserRequestDto.js";
 import UpdateUserRequestDto from "../dtos/request/UpdateUserRequestDto.js";
@@ -10,8 +11,21 @@ class UserController {
       // 1. Validate Input
       const userData = CreateUserRequestDto.validate(req.body);
 
+      const signatureFile = req.file;
+      if (signatureFile) {
+        const sizeKB = signatureFile.size / 1024;
+        if (sizeKB < 20 || sizeKB > 100) {
+          // Cleanup temp file
+          fs.unlinkSync(signatureFile.path);
+          throw new AppError(
+            "Signature image must be between 20KB and 100KB.",
+            400,
+          );
+        }
+      }
+
       // 2. Call Service
-      const createdUser = await UserService.createUser(userData);
+      const createdUser = await UserService.createUser(userData, signatureFile);
 
       // 3. Send Response
       res.status(201).json({
@@ -20,6 +34,9 @@ class UserController {
         data: createdUser,
       });
     } catch (error) {
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
       next(error);
     }
   }

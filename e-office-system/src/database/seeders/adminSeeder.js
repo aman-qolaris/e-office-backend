@@ -1,6 +1,9 @@
 import "dotenv/config";
+import fs from "fs";
+import path from "path";
 import { sequelize, User, Designation } from "../models/index.js"; // Import Designation
 import { ROLES, DESIGNATIONS } from "../../config/constants.js";
+import { minioClient, BUCKET_NAME } from "../../config/minio.js";
 
 const seedAdmin = async () => {
   try {
@@ -30,6 +33,48 @@ const seedAdmin = async () => {
       process.exit(1);
     }
 
+    const signaturePath = path.join(
+      process.cwd(),
+      "src",
+      "database",
+      "seeders",
+      "assets",
+      "admin-signature.jpeg",
+    );
+    let signatureUrl = null;
+
+    if (fs.existsSync(signaturePath)) {
+      console.log("📄 Found admin-signature.png. Uploading to MinIO...");
+      const ext = path.extname(signaturePath);
+      const uniqueSuffix = `admin-${Date.now()}`;
+      const objectName = `signatures/users/${uniqueSuffix}${ext}`;
+
+      try {
+        const fileStream = fs.createReadStream(signaturePath);
+        const stats = fs.statSync(signaturePath);
+
+        // Upload to MinIO bucket
+        await minioClient.putObject(
+          BUCKET_NAME,
+          objectName,
+          fileStream,
+          stats.size,
+        );
+        signatureUrl = objectName; // Save this URL for the database
+        console.log("✅ Admin signature successfully uploaded to MinIO!");
+      } catch (uploadError) {
+        console.error(
+          "❌ Failed to upload signature to MinIO. Check MinIO connection:",
+          uploadError,
+        );
+        process.exit(1);
+      }
+    } else {
+      console.log(
+        "⚠️ No signature found at src/database/seeders/assets/admin-signature.png. Admin will be created without a signature.",
+      );
+    }
+
     // 3. Create Admin
     const adminData = {
       full_name: "System Administrator",
@@ -41,6 +86,7 @@ const seedAdmin = async () => {
       designation_id: adminDesignation.id,
 
       department_id: 1, // Ensure you have a department with ID 1 (e.g. General Administration)
+      signature_url: signatureUrl,
       is_active: true,
     };
 

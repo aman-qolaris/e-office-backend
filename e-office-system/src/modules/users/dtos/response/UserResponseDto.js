@@ -7,6 +7,7 @@ class UserResponseDto {
     this.systemRole = user.system_role;
     this.designation = user.designation ? user.designation.name : "N/A";
     this.isActive = user.is_active;
+    this.signatureUrl = user.signature_url || null;
 
     // Return Department Name if available, otherwise just ID
     this.department = user.department
