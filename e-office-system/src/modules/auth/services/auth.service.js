@@ -36,6 +36,8 @@ class AuthService {
       throw new AppError("Account is disabled. Contact Admin.", 403);
     }
 
+    await redisClient.del(`user:${user.id}`);
+
     // 3. Generate JWT Token
     const token = this.generateToken(user);
 
@@ -56,6 +58,8 @@ class AuthService {
     // 2. Update Password (Hook will hash it automatically)
     user.password = newPassword;
     await user.save();
+
+    await redisClient.del(`user:${userId}`);
 
     return { message: "Password changed successfully" };
   }
@@ -85,6 +89,8 @@ class AuthService {
     // 2. Save PIN (The Model Hook will auto-hash this!)
     user.security_pin = newPin;
     await user.save();
+
+    await redisClient.del(`user:${userId}`);
 
     return { message: "Security PIN set successfully" };
   }
@@ -144,6 +150,7 @@ class AuthService {
     await user.save();
 
     await redisClient.del(`reset_otp:${phoneNumber}`);
+    await redisClient.del(`user:${user.id}`);
 
     return { message: "Password reset successfully. You can now login." };
   }
