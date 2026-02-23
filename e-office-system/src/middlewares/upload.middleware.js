@@ -1,13 +1,14 @@
-import multer, { diskStorage } from "multer";
+import multer from "multer";
 import path from "path";
 import fs from "fs";
 
+// 1. Create a temporary directory on the server's hard drive
 const tempDir = path.join(process.cwd(), "tmp_uploads");
 if (!fs.existsSync(tempDir)) {
   fs.mkdirSync(tempDir, { recursive: true });
 }
 
-// 1. Storage: Keep file in Memory (Buffer)
+// 2. Configure the Storage Engine (Disk Storage)
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, tempDir);
@@ -21,8 +22,8 @@ const storage = multer.diskStorage({
   },
 });
 
-// 2. Filter: Only allow PDFs
-const fileFilter = (req, file, cb) => {
+// 3. Filter: Only allow PDFs for E-files
+const pdfFilter = (req, file, cb) => {
   if (file.mimetype === "application/pdf") {
     cb(null, true);
   } else {
@@ -30,13 +31,14 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// 3. Configure Multer
+// 4. Configure Multer for PDFs
 export const upload = multer({
-  storage: storage,
+  storage: storage, // <-- Correctly using the 'storage' variable defined above
   limits: { fileSize: 10 * 1024 * 1024 }, // Limit: 10MB
-  fileFilter: fileFilter,
+  fileFilter: pdfFilter,
 });
 
+// 5. Filter: Only allow JPG/PNG for Signatures
 const signatureFilter = (req, file, cb) => {
   if (
     file.mimetype === "image/jpeg" ||
@@ -54,9 +56,9 @@ const signatureFilter = (req, file, cb) => {
   }
 };
 
-// 5. Configure Multer for Signatures
+// 6. Configure Multer for Signatures
 export const uploadSignature = multer({
-  storage: diskStorage, // Reuse the disk storage
-  limits: { fileSize: 100 * 1024 }, // Max 100KB (we'll strictly enforce 50KB in the controller)
+  storage: storage, // <-- Correctly reusing the same 'storage' variable here!
+  limits: { fileSize: 100 * 1024 }, // Max 100KB
   fileFilter: signatureFilter,
 });
