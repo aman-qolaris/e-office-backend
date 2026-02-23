@@ -121,32 +121,6 @@ class UserController {
       next(error);
     }
   }
-
-  // ... existing methods ...
-
-  async uploadSignature(req, res, next) {
-    try {
-      if (!req.file) {
-        throw new AppError("Please provide an image file (JPG/PNG)", 400);
-      }
-
-      // We will create this method in the UserService next
-      const updatedUser = await UserService.uploadSignature(
-        req.user.id,
-        req.file,
-      );
-
-      res.status(200).json({
-        success: true,
-        message: "Signature uploaded successfully",
-        data: {
-          signature_url: updatedUser.signature_url,
-        },
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
 }
 
 export default new UserController();

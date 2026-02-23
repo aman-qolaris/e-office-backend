@@ -40,12 +40,6 @@ class WorkflowService {
       }
 
       if (moveData.action === MOVEMENT_ACTIONS.FORWARD) {
-        if (!currentUser.signature_url) {
-          throw new AppError(
-            "Signature not found. Please upload your digital signature (JPG/PNG) in your profile settings before forwarding files.",
-            400,
-          );
-        }
         // Check if user has even created a PIN yet
         if (!currentUser.security_pin) {
           throw new AppError(
@@ -134,10 +128,6 @@ class WorkflowService {
           sent_to: moveData.receiverId,
           action: moveData.action,
           remarks: moveData.remarks,
-          signature_url:
-            moveData.action === MOVEMENT_ACTIONS.FORWARD
-              ? currentUser.signature_url
-              : null,
           is_read: false,
         },
         { transaction },

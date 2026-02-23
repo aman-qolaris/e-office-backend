@@ -97,12 +97,6 @@ User.init(
 
     // --- SECURITY ---
 
-    signature_url: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      comment: "MinIO URL path for the user's uploaded signature (JPG/PNG)",
-    },
-
     // Hashed PIN for "Digital Signature" approvals
     security_pin: {
       type: DataTypes.STRING,

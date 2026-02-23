@@ -4,7 +4,6 @@ import { protect } from "../../../middlewares/auth.middleware.js";
 import { restrictTo } from "../../../middlewares/rbac.middleware.js";
 import { DESIGNATIONS, ROLES } from "../../../config/constants.js";
 import AppError from "../../../utils/AppError.js";
-import { uploadImage } from "../../../middlewares/upload.middleware.js";
 const router = Router();
 
 // Apply Global Protection (Must be logged in)
@@ -269,11 +268,5 @@ router.post("/", restrictTo(ROLES.ADMIN), UserController.createUser);
  *         description: User not found
  */
 router.patch("/:id", permitAdminOrPresident, UserController.updateUser);
-
-router.post(
-  "/profile/signature",
-  uploadImage.single("signature"),
-  UserController.uploadSignature,
-);
 
 export default router;

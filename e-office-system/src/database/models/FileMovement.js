@@ -40,15 +40,10 @@ FileMovement.init(
       allowNull: false,
     },
 
-    // What happened? (FORWARD)
+    // What happened? (FORWARD, REVERT, APPROVE, REJECT)
     action: {
       type: DataTypes.ENUM(...Object.values(MOVEMENT_ACTIONS)),
       allowNull: false,
-    },
-
-    signature_url: {
-      type: DataTypes.STRING,
-      allowNull: true,
     },
 
     // User's comment ("Please check budget")
