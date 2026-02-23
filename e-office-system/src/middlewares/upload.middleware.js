@@ -36,3 +36,25 @@ export const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // Limit: 10MB
   fileFilter: fileFilter,
 });
+
+// 4. Image Filter: Only allow JPG/PNG
+const imageFilter = (req, file, cb) => {
+  const allowedTypes = ["image/jpeg", "image/jpg", "image/png"];
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error(
+        "Invalid file type. Only JPG and PNG images are allowed for signatures!",
+      ),
+      false,
+    );
+  }
+};
+
+// 5. Configure Multer for Images
+export const uploadImage = multer({
+  storage: storage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // Limit: 5MB for images
+  fileFilter: imageFilter,
+});

@@ -1,3 +1,6 @@
+import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
+import path from "path";
+import fs from "fs";
 import {
   sequelize,
   User,
@@ -353,6 +356,42 @@ class UserService {
     await redisClient.del(["designations:president", "designations:standard"]);
 
     return newDesig;
+  }
+
+  async uploadSignature(userId, file) {
+    const user = await User.findByPk(userId);
+    if (!user) throw new AppError("User not found", 404);
+
+    const ext = path.extname(file.originalname);
+    const objectName = `signatures/user_${userId}_${Date.now()}${ext}`;
+
+    try {
+      const fileStream = fs.createReadStream(file.path);
+
+      // Upload to MinIO
+      await minioClient.putObject(
+        BUCKET_NAME,
+        objectName,
+        fileStream,
+        file.size,
+      );
+
+      // Save URL to User Database
+      user.signature_url = objectName;
+      await user.save();
+
+      // Clear cache so updated user info is fetched next time
+      await redisClient.del(`user:${userId}`);
+
+      return user;
+    } finally {
+      // Clean up temp file
+      if (fs.existsSync(file.path)) {
+        fs.unlink(file.path, (err) => {
+          if (err) console.error("Failed to delete temp signature file:", err);
+        });
+      }
+    }
   }
 }
 
