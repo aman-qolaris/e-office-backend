@@ -40,6 +40,12 @@ class WorkflowService {
       }
 
       if (moveData.action === MOVEMENT_ACTIONS.FORWARD) {
+        if (!currentUser.signature_url) {
+          throw new AppError(
+            "Digital Signature is missing. Please ask Admin to upload your signature before forwarding files.",
+            403,
+          );
+        }
         // Check if user has even created a PIN yet
         if (!currentUser.security_pin) {
           throw new AppError(

@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import {
   sequelize,
   User,
@@ -11,7 +14,7 @@ import { DESIGNATIONS, ROLES } from "../../../config/constants.js";
 import redisClient from "../../../config/redis.js";
 
 class UserService {
-  async createUser(data) {
+  async createUser(data, signatureFile) {
     if (data.systemRole === ROLES.ADMIN) {
       const adminExists = await User.findOne({
         where: { system_role: ROLES.ADMIN, is_active: true },
@@ -43,6 +46,29 @@ class UserService {
       throw new AppError("Designation not found", 404);
     }
 
+    let signatureUrl = null;
+    if (signatureFile) {
+      const ext = path.extname(signatureFile.originalname);
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e4)}`;
+      const objectName = `signatures/users/${uniqueSuffix}${ext}`;
+
+      try {
+        const fileStream = fs.createReadStream(signatureFile.path);
+        await minioClient.putObject(
+          BUCKET_NAME,
+          objectName,
+          fileStream,
+          signatureFile.size,
+        );
+        signatureUrl = objectName; // Save the path to DB
+      } finally {
+        // Always clean up the temp file
+        if (fs.existsSync(signatureFile.path)) {
+          fs.unlinkSync(signatureFile.path);
+        }
+      }
+    }
+
     // 3. Create User
     // Note: Password hashing is handled by the 'beforeCreate' hook in User model
     const newUser = await User.create({
@@ -53,6 +79,7 @@ class UserService {
       designation_id: data.designationId,
       department_id: data.departmentId,
       email: data.email,
+      signature_url: signatureUrl,
       is_active: true,
     });
 

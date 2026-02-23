@@ -65,6 +65,7 @@ class FileResponseDto {
         remarks: move.remarks,
         sender: move.sender ? move.sender.full_name : "System",
         senderDesignation: move.sender?.designation?.name || null,
+        senderSignature: move.sender?.signature_url || null,
         date: new Date(move.createdAt).toLocaleString("en-IN", options),
         receiver: move.receiver ? move.receiver.full_name : null,
         receiverDesignation: move.receiver?.designation?.name || null,

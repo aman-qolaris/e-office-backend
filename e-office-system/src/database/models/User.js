@@ -103,6 +103,11 @@ User.init(
       allowNull: true,
     },
 
+    signature_url: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
     is_active: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
