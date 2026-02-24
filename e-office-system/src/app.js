@@ -42,7 +42,13 @@ app.use("/api/v1", routes);
 // 3. Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-
+if (err.name === "MulterError") {
+    return res.status(400).json({
+      success: false,
+      // Provide a clean message for the frontend toast to display
+      message: err.code === "LIMIT_FILE_SIZE" ? "File is too large. Max size is 100KB." : err.message,
+    });
+  }
   // 1. Handle Joi Validation Errors (400 Bad Request)
   if (err.message.includes("must be") || err.message.includes("required")) {
     return res.status(400).json({
