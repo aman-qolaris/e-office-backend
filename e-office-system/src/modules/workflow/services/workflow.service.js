@@ -17,6 +17,7 @@ import {
 } from "../../../config/constants.js";
 import AppError from "../../../utils/AppError.js";
 import { getIO } from "../../../config/socket.js";
+import bcrypt from "bcryptjs";
 
 class WorkflowService {
   async moveFile(fileId, moveData, currentUser, attachments = []) {
@@ -62,7 +63,10 @@ class WorkflowService {
           );
         }
 
-       const isPinValid = await dbUser.validatePin(moveData.pin);
+        const isPinValid = await bcrypt.compare(
+          moveData.pin,
+          currentUser.security_pin,
+        );
         if (!isPinValid) {
           throw new AppError("Invalid Security PIN.", 400);
         }
@@ -136,6 +140,7 @@ class WorkflowService {
           action: moveData.action,
           remarks: moveData.remarks,
           is_read: false,
+          signature_snapshot: currentUser.signature_url,
         },
         { transaction },
       );

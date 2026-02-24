@@ -8,7 +8,7 @@ import {
   Department,
   Designation, // Ensure Designation is imported
 } from "../../../database/models/index.js";
-import { FILE_STATUS, ROLES, DESIGNATIONS } from "../../../config/constants.js";
+import { FILE_STATUS } from "../../../config/constants.js";
 import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import AppError from "../../../utils/AppError.js";
 import FileResponseDto from "../dtos/response/FileResponseDto.js";
