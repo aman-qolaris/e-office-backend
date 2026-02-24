@@ -77,9 +77,9 @@ class FileController {
   async getFileHistory(req, res, next) {
     try {
       const { id } = req.params; // Get file ID from URL
-      const { limit, cursor } = req.query;
+      const { limit, cursor,sort} = req.query;
 
-      const result = await FileService.getFileHistory(id, { limit, cursor });
+      const result = await FileService.getFileHistory(id, { limit, cursor, sort });
 
       res.status(200).json({
         success: true,

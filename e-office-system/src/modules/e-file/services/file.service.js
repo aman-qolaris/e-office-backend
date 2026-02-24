@@ -346,7 +346,6 @@ class FileService {
     const limitNum = parseInt(limit) || 20;
     const cursorId = cursor ? parseInt(cursor) : 0;
 
-    // 1. Just fetch the basic File info (No movements here!)
     const file = await FileMaster.findByPk(fileId, {
       include: [
         { model: Department, as: "department", attributes: ["name"] },
@@ -358,14 +357,12 @@ class FileService {
       ],
     });
 
-    if (!file) {
-      throw new AppError("File not found", 404);
-    }
+    if (!file) throw new AppError("File not found", 404);
 
-    // 2. Fetch the paginated thread (Movements)
+    // 🟢 FETCH BACKWARDS (Older messages)
     const movementWhere = { file_id: fileId };
     if (cursorId > 0) {
-      movementWhere.id = { [Op.gt]: cursorId }; // Fetch newer movements than cursor
+      movementWhere.id = { [Op.lt]: cursorId }; // Op.lt means "Less Than"
     }
 
     const movements = await FileMovement.findAll({
@@ -376,31 +373,21 @@ class FileService {
           model: User,
           as: "sender",
           attributes: ["full_name", "signature_url"],
-          include: [
-            { model: Designation, as: "designation", attributes: ["name"] },
-          ],
+          include: [{ model: Designation, as: "designation", attributes: ["name"] }],
         },
         {
           model: User,
           as: "receiver",
           attributes: ["full_name"],
-          include: [
-            { model: Designation, as: "designation", attributes: ["name"] },
-          ],
+          include: [{ model: Designation, as: "designation", attributes: ["name"] }],
         },
         {
           model: FileAttachment,
           as: "attachments",
-          attributes: [
-            "id",
-            "original_name",
-            "file_url",
-            "mime_type",
-            "file_size",
-          ],
+          attributes: ["id", "original_name", "file_url", "mime_type", "file_size"],
         },
       ],
-      order: [["id", "ASC"]],
+      order: [["id", "DESC"]], // 🟢 Fetch Newest First
     });
 
     let nextCursor = null;
@@ -409,8 +396,8 @@ class FileService {
       nextCursor = movements[movements.length - 1].id;
     }
 
-    // 3. Attach and map
-    file.movements = movements;
+    // 🟢 REVERSE the array so it's chronological (Top to Bottom) for the UI!
+    file.movements = movements.reverse();
     const formattedData = new FileResponseDto(file);
 
     return {
