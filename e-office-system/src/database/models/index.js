@@ -1,10 +1,14 @@
 import sequelize from "../../config/database.js";
-import Department from "./Department.js";
-import User from "./User.js";
-import FileMaster from "./FileMaster.js";
-import FileMovement from "./FileMovement.js";
-import FileAttachment from "./FileAttachment.js";
-import Designation from "./Designation.js";
+
+// Import models from their respective module domains
+import Department from "../../modules/users/models/Department.js";
+import Designation from "../../modules/users/models/Designation.js";
+import User from "../../modules/users/models/User.js";
+
+import FileMaster from "../../modules/e-file/models/FileMaster.js";
+import FileAttachment from "../../modules/e-file/models/FileAttachment.js";
+
+import FileMovement from "../../modules/workflow/models/FileMovement.js";
 
 // Define Associations
 // 1. User & Department

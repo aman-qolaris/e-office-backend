@@ -1,6 +1,6 @@
 import { DataTypes, Model } from "sequelize";
-import sequelize from "../../config/database.js";
-import { MOVEMENT_ACTIONS } from "../../config/constants.js";
+import sequelize from "../../../config/database.js";
+import { MOVEMENT_ACTIONS } from "../../../config/constants.js";
 
 class FileMovement extends Model {}
 

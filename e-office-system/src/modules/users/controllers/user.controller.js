@@ -1,9 +1,10 @@
-import fs from "fs";
 import UserService from "../services/user.service.js";
 import CreateUserRequestDto from "../dtos/request/CreateUserRequestDto.js";
 import UpdateUserRequestDto from "../dtos/request/UpdateUserRequestDto.js";
 import CreateDepartmentRequestDto from "../dtos/request/CreateDepartmentRequestDto.js";
 import CreateDesignationRequestDto from "../dtos/request/CreateDesignationRequestDto.js";
+import AppError from "../../../utils/AppError.js";
+import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 
 class UserController {
   async createUser(req, res, next) {
@@ -15,8 +16,14 @@ class UserController {
       if (signatureFile) {
         const sizeKB = signatureFile.size / 1024;
         if (sizeKB < 20 || sizeKB > 100) {
-          // Cleanup temp file
-          fs.unlinkSync(signatureFile.path);
+          // Cleanup object uploaded by multer-s3
+          if (signatureFile.key) {
+            try {
+              await minioClient.removeObject(BUCKET_NAME, signatureFile.key);
+            } catch {
+              // Best-effort cleanup
+            }
+          }
           throw new AppError(
             "Signature image must be between 20KB and 100KB.",
             400,
@@ -34,8 +41,12 @@ class UserController {
         data: createdUser,
       });
     } catch (error) {
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      if (req.file?.key) {
+        try {
+          await minioClient.removeObject(BUCKET_NAME, req.file.key);
+        } catch {
+          // Best-effort cleanup
+        }
       }
       next(error);
     }
