@@ -4,6 +4,8 @@ import { protect } from "../../../middlewares/auth.middleware.js";
 
 const router = Router();
 
+export const basePath = "/files";
+
 // Apply Global Protection (Must be logged in)
 router.use(protect);
 

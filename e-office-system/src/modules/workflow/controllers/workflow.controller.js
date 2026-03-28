@@ -1,7 +1,7 @@
 import WorkflowService from "../services/workflow.service.js";
 import MoveFileRequestDto from "../dtos/request/MoveFileRequestDto.js";
 import AppError from "../../../utils/AppError.js";
-import fs from "fs";
+import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 
 class WorkflowController {
   async moveFile(req, res, next) {
@@ -43,14 +43,20 @@ class WorkflowController {
       });
     } catch (error) {
       if (attachments.length > 0) {
-        attachments.forEach((file) => {
-          if (file.path && fs.existsSync(file.path)) {
-            fs.unlink(file.path, (err) => {
-              if (err)
-                console.error("Failed to clean up temp file on error:", err);
-            });
-          }
-        });
+        await Promise.all(
+          attachments.map(async (file) => {
+            const key = file?.key;
+            if (!key) return;
+            try {
+              await minioClient.removeObject(BUCKET_NAME, key);
+            } catch (cleanupErr) {
+              console.error(
+                "Failed to clean up MinIO object on error:",
+                cleanupErr,
+              );
+            }
+          }),
+        );
       }
 
       next(error);

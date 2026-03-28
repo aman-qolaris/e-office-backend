@@ -7,8 +7,8 @@ import {
 import AuthResponseDto from "../dtos/response/AuthResponseDto.js";
 import AppError from "../../../utils/AppError.js";
 import crypto from "crypto";
-import notificationService from "../../../utils/notification.service.js";
-import { passwordResetTemplate } from "../../../utils/templates/emailTemplates.js";
+import notificationService from "../../notifications/services/notification.service.js";
+import { passwordResetTemplate } from "../../notifications/templates/emailTemplates.js";
 import redisClient from "../../../config/redis.js";
 
 class AuthService {

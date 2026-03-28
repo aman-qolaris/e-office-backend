@@ -1,7 +1,7 @@
 import { DataTypes, Model } from "sequelize";
 import bcrypt from "bcryptjs";
-import sequelize from "../../config/database.js";
-import { ROLES } from "../../config/constants.js";
+import sequelize from "../../../config/database.js";
+import { ROLES } from "../../../config/constants.js";
 
 class User extends Model {
   // 1. Helper to check Password during Login

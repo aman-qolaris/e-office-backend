@@ -1,24 +1,59 @@
 import multer from "multer";
 import path from "path";
-import fs from "fs";
+import crypto from "crypto";
+import multerS3 from "multer-s3";
+import { BUCKET_NAME } from "../config/minio.js";
+import { s3Client } from "../config/s3.js";
 
-// 1. Create a temporary directory on the server's hard drive
-const tempDir = path.join(process.cwd(), "tmp_uploads");
-if (!fs.existsSync(tempDir)) {
-  fs.mkdirSync(tempDir, { recursive: true });
-}
+const buildDeptCode = (req) => {
+  const deptName = req?.user?.department?.name;
+  if (typeof deptName === "string" && deptName.trim().length >= 3) {
+    return deptName.trim().substring(0, 3).toUpperCase();
+  }
 
-// 2. Configure the Storage Engine (Disk Storage)
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, tempDir);
+  const deptId = req?.user?.department_id;
+  if (deptId !== undefined && deptId !== null) {
+    return `D${deptId}`;
+  }
+
+  return "GEN";
+};
+
+const uniqueSuffix = () => `${Date.now()}-${crypto.randomInt(1000, 10000)}`;
+
+const pdfStorage = multerS3({
+  s3: s3Client,
+  bucket: BUCKET_NAME,
+  contentType: multerS3.AUTO_CONTENT_TYPE,
+  key: (req, file, cb) => {
+    try {
+      const ext = path.extname(file.originalname) || ".pdf";
+      const year = new Date().getFullYear();
+      const deptCode = buildDeptCode(req);
+      const fileId = req?.params?.id;
+      const fileSegment = fileId ? `file-${fileId}` : "misc";
+
+      cb(
+        null,
+        `files/${year}/${deptCode}/${fileSegment}/attachments/${uniqueSuffix()}${ext}`,
+      );
+    } catch (err) {
+      cb(err);
+    }
   },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(
-      null,
-      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname),
-    );
+});
+
+const signatureStorage = multerS3({
+  s3: s3Client,
+  bucket: BUCKET_NAME,
+  contentType: multerS3.AUTO_CONTENT_TYPE,
+  key: (req, file, cb) => {
+    try {
+      const ext = path.extname(file.originalname) || ".png";
+      cb(null, `signatures/users/${uniqueSuffix()}${ext}`);
+    } catch (err) {
+      cb(err);
+    }
   },
 });
 
@@ -33,7 +68,7 @@ const pdfFilter = (req, file, cb) => {
 
 // 4. Configure Multer for PDFs
 export const upload = multer({
-  storage: storage, // <-- Correctly using the 'storage' variable defined above
+  storage: pdfStorage,
   limits: { fileSize: 10 * 1024 * 1024 }, // Limit: 10MB
   fileFilter: pdfFilter,
 });
@@ -58,7 +93,7 @@ const signatureFilter = (req, file, cb) => {
 
 // 6. Configure Multer for Signatures
 export const uploadSignature = multer({
-  storage: storage, // <-- Correctly reusing the same 'storage' variable here!
+  storage: signatureStorage,
   limits: { fileSize: 100 * 1024 }, // Max 100KB
   fileFilter: signatureFilter,
 });

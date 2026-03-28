@@ -1,11 +1,10 @@
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { promisify } from "util";
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath, pathToFileURL } from "url";
 import { User, Designation } from "../database/models/index.js";
-import authRoutes from "../modules/auth/routes/auth.routes.js";
-import userRoutes from "../modules/users/routes/user.routes.js";
-import fileRoutes from "../modules/e-file/routes/file.routes.js";
-import workflowRoutes from "../modules/workflow/routes/workflow.routes.js";
 import * as allConstants from "../config/constants.js";
 
 const router = Router();
@@ -57,12 +56,62 @@ router.get("/constants", async (req, res) => {
   });
 });
 
-// Mount Auth Module
-router.use("/auth", authRoutes);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const modulesDir = path.join(__dirname, "..", "modules");
 
-// Future modules will go here:
-router.use("/users", userRoutes);
-router.use("/files", fileRoutes);
-router.use("/workflow", workflowRoutes);
+const normalizeMountPath = (mountPath) => {
+  if (typeof mountPath !== "string") return null;
+  const trimmed = mountPath.trim();
+  if (!trimmed) return null;
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+};
+
+const loadModuleRoutes = async () => {
+  let moduleEntries;
+  try {
+    moduleEntries = await fs.readdir(modulesDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  const moduleDirs = moduleEntries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b));
+
+  for (const moduleName of moduleDirs) {
+    const routesDir = path.join(modulesDir, moduleName, "routes");
+
+    let routeEntries;
+    try {
+      routeEntries = await fs.readdir(routesDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    const routeFiles = routeEntries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".routes.js"))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b));
+
+    for (const routeFile of routeFiles) {
+      const routeFilePath = path.join(routesDir, routeFile);
+      const imported = await import(pathToFileURL(routeFilePath).href);
+
+      const routeRouter = imported?.default;
+      if (!routeRouter) continue;
+
+      const explicitBasePath =
+        imported.basePath ?? imported.BASE_PATH ?? imported.routeBasePath;
+      const mountPath =
+        normalizeMountPath(explicitBasePath) ?? `/${moduleName}`;
+
+      router.use(mountPath, routeRouter);
+    }
+  }
+};
+
+await loadModuleRoutes();
 
 export default router;

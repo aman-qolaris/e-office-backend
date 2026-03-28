@@ -1,14 +1,11 @@
 import path from "path";
-import fs from "fs";
-import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
+import fileService from "../../e-file/services/file.service.js";
 import {
   sequelize,
-  FileMaster,
   FileMovement,
   FileAttachment,
   User,
   Designation,
-  Department,
 } from "../../../database/models/index.js";
 import {
   MOVEMENT_ACTIONS,
@@ -26,10 +23,7 @@ class WorkflowService {
     try {
       // 1. Find the File
       const dbUser = await User.findByPk(currentUser.id);
-      const file = await FileMaster.findByPk(fileId);
-      if (!file) {
-        throw new AppError("File not found", 404);
-      }
+      const file = await fileService.getFileOrThrow(fileId, transaction);
 
       if (
         file.current_designation_id !== currentUser.designation_id ||
@@ -71,9 +65,10 @@ class WorkflowService {
           throw new AppError("Invalid Security PIN.", 400);
         }
 
+        await fileService.markFileVerified(fileId, currentUser.id, transaction);
+
+        // Keep in-memory state aligned for subsequent checks in this flow
         file.is_verified = true;
-        file.verified_by = currentUser.id;
-        file.verified_at = new Date();
       }
 
       const receiver = await User.findByPk(moveData.receiverId, {
@@ -122,12 +117,11 @@ class WorkflowService {
         );
       }
 
-      file.current_holder_id = moveData.receiverId; // Keep for reference
-      file.current_designation_id = receiver.designation_id; // CRITICAL
-      file.current_department_id = receiver.department_id; // CRITICAL
-      file.status = null;
-
-      await file.save({ transaction });
+      await fileService.updateFileLocation(
+        fileId,
+        moveData.receiverId,
+        transaction,
+      );
 
       // 5. Create Audit Trail (History)
       const movement = await FileMovement.create(
@@ -146,50 +140,33 @@ class WorkflowService {
       );
 
       if (attachments && attachments.length > 0) {
-        const department = await Department.findByPk(currentUser.department_id);
-        const deptCode = department.name.substring(0, 3).toUpperCase();
-        const year = new Date().getFullYear();
-
         await Promise.all(
           attachments.map(async (uploadFile) => {
-            const attExt = path.extname(uploadFile.originalname);
-            const attSuffix = `${Date.now()}-${Math.round(Math.random() * 1e4)}`;
-            // Notice we put it in a specific movement folder
-            const attObjectName = `files/${year}/${deptCode}/movements/${movement.id}/${attSuffix}${attExt}`;
-
-            try {
-              // 1. Create a read stream from the temporary file on disk
-              const fileStream = fs.createReadStream(uploadFile.path);
-
-              // 2. Upload to MinIO using the stream
-              await minioClient.putObject(
-                BUCKET_NAME,
-                attObjectName,
-                fileStream,
-                uploadFile.size,
+            const fileKey = uploadFile?.key;
+            if (!fileKey) {
+              throw new AppError(
+                "Attachment upload failed: missing object key.",
+                500,
               );
-
-              // 3. Save to Database
-              return await FileAttachment.create(
-                {
-                  file_id: file.id,
-                  movement_id: movement.id,
-                  original_name: uploadFile.originalname,
-                  file_key: attObjectName,
-                  file_url: attObjectName,
-                  mime_type: uploadFile.mimetype,
-                  file_size: uploadFile.size,
-                },
-                { transaction },
-              );
-            } finally {
-              // 4. ALWAYS clean up the temporary file from disk, even if MinIO upload fails
-              if (fs.existsSync(uploadFile.path)) {
-                fs.unlink(uploadFile.path, (err) => {
-                  if (err) console.error("Failed to delete temp file:", err);
-                });
-              }
             }
+
+            const safeExt =
+              path.extname(uploadFile.originalname || "") || ".pdf";
+            const originalName =
+              uploadFile.originalname || `attachment${safeExt}`;
+
+            return await FileAttachment.create(
+              {
+                file_id: file.id,
+                movement_id: movement.id,
+                original_name: originalName,
+                file_key: fileKey,
+                file_url: fileKey,
+                mime_type: uploadFile.mimetype,
+                file_size: uploadFile.size,
+              },
+              { transaction },
+            );
           }),
         );
       }

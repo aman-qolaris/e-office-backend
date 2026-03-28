@@ -373,18 +373,28 @@ class FileService {
           model: User,
           as: "sender",
           attributes: ["full_name", "signature_url"],
-          include: [{ model: Designation, as: "designation", attributes: ["name"] }],
+          include: [
+            { model: Designation, as: "designation", attributes: ["name"] },
+          ],
         },
         {
           model: User,
           as: "receiver",
           attributes: ["full_name"],
-          include: [{ model: Designation, as: "designation", attributes: ["name"] }],
+          include: [
+            { model: Designation, as: "designation", attributes: ["name"] },
+          ],
         },
         {
           model: FileAttachment,
           as: "attachments",
-          attributes: ["id", "original_name", "file_url", "mime_type", "file_size"],
+          attributes: [
+            "id",
+            "original_name",
+            "file_url",
+            "mime_type",
+            "file_size",
+          ],
         },
       ],
       order: [["id", "DESC"]], // 🟢 Fetch Newest First
@@ -523,6 +533,51 @@ class FileService {
       console.error("MinIO Error:", err);
       throw new AppError("Error retrieving attachment from storage.", 500);
     }
+  }
+
+  /**
+   * Internal helper for cross-module calls.
+   * Workflow (and other modules) must not access FileMaster directly.
+   */
+  async getFileOrThrow(fileId, transaction = null) {
+    const file = await FileMaster.findByPk(fileId, { transaction });
+    if (!file) throw new AppError("File not found", 404);
+    return file;
+  }
+
+  /**
+   * Called by the Workflow module to mark a file as verified.
+   */
+  async markFileVerified(fileId, verifiedByUserId, transaction = null) {
+    const file = await this.getFileOrThrow(fileId, transaction);
+
+    file.is_verified = true;
+    file.verified_by = verifiedByUserId;
+    file.verified_at = new Date();
+
+    await file.save({ transaction });
+    return file;
+  }
+
+  /**
+   * Called by the Workflow module to update file routing fields after a move.
+   * Keeps all FileMaster mutation within the E-File domain.
+   */
+  async updateFileLocation(fileId, newHolderId, transaction = null) {
+    const file = await this.getFileOrThrow(fileId, transaction);
+
+    const receiver = await User.findByPk(newHolderId, { transaction });
+    if (!receiver) throw new AppError("Receiver not found", 404);
+
+    file.current_holder_id = newHolderId;
+    file.current_designation_id = receiver.designation_id;
+    file.current_department_id = receiver.department_id;
+
+    // Preserve existing behavior from WorkflowService: status is cleared on move
+    file.status = null;
+
+    await file.save({ transaction });
+    return file;
   }
 }
 
