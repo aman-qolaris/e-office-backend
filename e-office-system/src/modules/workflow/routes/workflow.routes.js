@@ -2,7 +2,10 @@ import { Router } from "express";
 import WorkflowController from "../controllers/workflow.controller.js";
 import { protect } from "../../../middlewares/auth.middleware.js";
 import { restrictTo } from "../../../middlewares/rbac.middleware.js";
-import { upload } from "../../../middlewares/upload.middleware.js";
+import {
+  upload,
+  validatePdfUploads,
+} from "../../../middlewares/upload.middleware.js";
 
 const router = Router();
 
@@ -187,6 +190,7 @@ router.use(protect);
 router.post(
   "/files/:id/move",
   upload.array("attachments", 10),
+  validatePdfUploads,
   WorkflowController.moveFile,
 );
 

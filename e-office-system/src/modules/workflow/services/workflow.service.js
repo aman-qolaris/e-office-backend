@@ -13,108 +13,38 @@ import {
   DESIGNATIONS,
 } from "../../../config/constants.js";
 import AppError from "../../../utils/AppError.js";
-import { getIO } from "../../../config/socket.js";
 import bcrypt from "bcryptjs";
+import eventBus, { EVENTS } from "../../../events/eventBus.js";
+import storageService from "../../storage/storage.service.js";
+import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 
 class WorkflowService {
   async moveFile(fileId, moveData, currentUser, attachments = []) {
+    // Pre-checks (no transaction): fail fast before any slow uploads.
+    const file = await this._validateFileAndPermissions(fileId, currentUser);
+
+    if (moveData.action === MOVEMENT_ACTIONS.FORWARD) {
+      await this._validateForwardingCredentials(moveData, currentUser);
+      // Align in-memory state for forwarding rules checks.
+      file.is_verified = true;
+    }
+
+    const receiver = await this._getAndValidateReceiver(
+      moveData.receiverId,
+      currentUser,
+    );
+
+    await this._validateForwardingRules(moveData, currentUser, file, receiver);
+
+    // Upload attachments first to avoid long-running DB transactions.
+    const uploadedAttachments = attachments?.length
+      ? await this._uploadAttachmentsToStorage(attachments, fileId)
+      : [];
+
     const transaction = await sequelize.transaction();
-
     try {
-      // 1. Find the File
-      const dbUser = await User.findByPk(currentUser.id);
-      const file = await fileService.getFileOrThrow(fileId, transaction);
-
-      if (
-        file.current_designation_id !== currentUser.designation_id ||
-        file.current_department_id !== currentUser.department_id
-      ) {
-        throw new AppError(
-          "You do not have permission to move this file.",
-          403,
-        );
-      }
-
       if (moveData.action === MOVEMENT_ACTIONS.FORWARD) {
-        if (!currentUser.signature_url) {
-          throw new AppError(
-            "Digital Signature is missing. Please ask Admin to upload your signature before forwarding files.",
-            403,
-          );
-        }
-        // Check if user has even created a PIN yet
-        if (!currentUser.security_pin) {
-          throw new AppError(
-            "Security PIN not created. Please set up your PIN in profile settings first.",
-            400,
-          );
-        }
-
-        if (!moveData.pin) {
-          throw new AppError(
-            "Security PIN is required to forward this file.",
-            400,
-          );
-        }
-
-        const isPinValid = await bcrypt.compare(
-          moveData.pin,
-          currentUser.security_pin,
-        );
-        if (!isPinValid) {
-          throw new AppError("Invalid Security PIN.", 400);
-        }
-
         await fileService.markFileVerified(fileId, currentUser.id, transaction);
-
-        // Keep in-memory state aligned for subsequent checks in this flow
-        file.is_verified = true;
-      }
-
-      const receiver = await User.findByPk(moveData.receiverId, {
-        include: [{ model: Designation, as: "designation" }],
-      });
-      if (!receiver) {
-        throw new AppError("Receiver not found", 404);
-      }
-
-      if (receiver.id === currentUser.id) {
-        throw new AppError("You cannot send or move a file to yourself.", 400);
-      }
-
-      const isReceiverPresident =
-        receiver.designation?.name === DESIGNATIONS.PRESIDENT;
-      const isAdmin = currentUser.system_role === ROLES.ADMIN;
-
-      // --- RULE 1: Staff cannot send to President ---
-      if (
-        currentUser.system_role === ROLES.STAFF &&
-        isReceiverPresident &&
-        !isAdmin
-      ) {
-        throw new AppError(
-          "Hierarchy Violation: Staff cannot send files directly to the President.",
-          403,
-        );
-      }
-
-      const isSenderPresident =
-        currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
-
-      if (isReceiverPresident) {
-        if (!file.is_verified) {
-          throw new AppError(
-            "Verification Required: You must VERIFY this file before forwarding to the President.",
-            400,
-          );
-        }
-      }
-
-      if (isSenderPresident && !file.is_verified) {
-        throw new AppError(
-          "Verification Required: President must verify before forwarding.",
-          400,
-        );
       }
 
       await fileService.updateFileLocation(
@@ -123,79 +53,31 @@ class WorkflowService {
         transaction,
       );
 
-      // 5. Create Audit Trail (History)
-      const movement = await FileMovement.create(
-        {
-          file_id: file.id,
-          sent_by: currentUser.id,
-          sent_by_designation_id: currentUser.designation_id,
-          sent_by_department_id: currentUser.department_id,
-          sent_to: moveData.receiverId,
-          action: moveData.action,
-          remarks: moveData.remarks,
-          is_read: false,
-          signature_snapshot: currentUser.signature_url,
-        },
-        { transaction },
+      const movement = await this._createAuditTrail(
+        file,
+        moveData,
+        currentUser,
+        transaction,
       );
 
-      if (attachments && attachments.length > 0) {
-        await Promise.all(
-          attachments.map(async (uploadFile) => {
-            const fileKey = uploadFile?.key;
-            if (!fileKey) {
-              throw new AppError(
-                "Attachment upload failed: missing object key.",
-                500,
-              );
-            }
+      if (uploadedAttachments.length) {
+        const rows = uploadedAttachments.map((att) => ({
+          ...att,
+          file_id: file.id,
+          movement_id: movement.id,
+        }));
 
-            const safeExt =
-              path.extname(uploadFile.originalname || "") || ".pdf";
-            const originalName =
-              uploadFile.originalname || `attachment${safeExt}`;
-
-            return await FileAttachment.create(
-              {
-                file_id: file.id,
-                movement_id: movement.id,
-                original_name: originalName,
-                file_key: fileKey,
-                file_url: fileKey,
-                mime_type: uploadFile.mimetype,
-                file_size: uploadFile.size,
-              },
-              { transaction },
-            );
-          }),
-        );
+        await FileAttachment.bulkCreate(rows, { transaction });
       }
 
-      // 6. Commit Transaction
       await transaction.commit();
 
-      // --- 7. FIRE REAL-TIME SOCKET NOTIFICATION ---
-      try {
-        const io = getIO();
-        // Emit to a specific room named after the receiver's ID
-        // The frontend will be listening to "new_file_received"
-        io.to(`user_${moveData.receiverId}`).emit("new_file_received", {
-          message: "A new file has been forwarded to you.",
-          fileId: file.id,
-          action: moveData.action,
-          senderId: currentUser.id,
-        });
-        console.log(
-          `✅ Real-time notification sent to user_${moveData.receiverId}`,
-        );
-      } catch (socketError) {
-        console.error(
-          "❌ Socket emission failed (but file was moved):",
-          socketError,
-        );
-        // We catch the error here so that if the socket fails for any reason,
-        // it doesn't break the successful file movement response.
-      }
+      eventBus.emit(EVENTS.FILE_MOVED, {
+        receiverId: moveData.receiverId,
+        fileId: file.id,
+        action: moveData.action,
+        senderId: currentUser.id,
+      });
 
       return {
         message: "File moved successfully",
@@ -203,8 +85,167 @@ class WorkflowService {
       };
     } catch (error) {
       await transaction.rollback();
+
+      // Best-effort cleanup: if DB failed after uploading, delete the uploaded objects.
+      if (uploadedAttachments?.length) {
+        await Promise.all(
+          uploadedAttachments.map(async (att) => {
+            try {
+              await minioClient.removeObject(BUCKET_NAME, att.file_key);
+            } catch {
+              // best-effort
+            }
+          }),
+        );
+      }
+
       throw error;
     }
+  }
+
+  async _validateFileAndPermissions(fileId, currentUser, transaction = null) {
+    const file = await fileService.getFileOrThrow(fileId, transaction);
+
+    if (
+      file.current_designation_id !== currentUser.designation_id ||
+      file.current_department_id !== currentUser.department_id
+    ) {
+      throw new AppError("You do not have permission to move this file.", 403);
+    }
+
+    return file;
+  }
+
+  async _validateForwardingCredentials(moveData, currentUser) {
+    if (!currentUser.signature_url) {
+      throw new AppError(
+        "Digital Signature is missing. Please ask Admin to upload your signature before forwarding files.",
+        403,
+      );
+    }
+
+    if (!currentUser.security_pin) {
+      throw new AppError(
+        "Security PIN not created. Please set up your PIN in profile settings first.",
+        400,
+      );
+    }
+
+    if (!moveData.pin) {
+      throw new AppError("Security PIN is required to forward this file.", 400);
+    }
+
+    const isPinValid = await bcrypt.compare(
+      moveData.pin,
+      currentUser.security_pin,
+    );
+    if (!isPinValid) {
+      throw new AppError("Invalid Security PIN.", 400);
+    }
+  }
+
+  async _getAndValidateReceiver(receiverId, currentUser) {
+    const receiver = await User.findByPk(receiverId, {
+      include: [{ model: Designation, as: "designation" }],
+    });
+
+    if (!receiver) {
+      throw new AppError("Receiver not found", 404);
+    }
+
+    if (receiver.id === currentUser.id) {
+      throw new AppError("You cannot send or move a file to yourself.", 400);
+    }
+
+    return receiver;
+  }
+
+  async _validateForwardingRules(moveData, currentUser, file, receiver) {
+    const isReceiverPresident =
+      receiver.designation?.name === DESIGNATIONS.PRESIDENT;
+    const isAdmin = currentUser.system_role === ROLES.ADMIN;
+
+    if (
+      currentUser.system_role === ROLES.STAFF &&
+      isReceiverPresident &&
+      !isAdmin
+    ) {
+      throw new AppError(
+        "Hierarchy Violation: Staff cannot send files directly to the President.",
+        403,
+      );
+    }
+
+    const isSenderPresident =
+      currentUser.designation?.name === DESIGNATIONS.PRESIDENT;
+
+    if (isReceiverPresident && !file.is_verified) {
+      throw new AppError(
+        "Verification Required: You must VERIFY this file before forwarding to the President.",
+        400,
+      );
+    }
+
+    if (isSenderPresident && !file.is_verified) {
+      throw new AppError(
+        "Verification Required: President must verify before forwarding.",
+        400,
+      );
+    }
+  }
+
+  async _createAuditTrail(file, moveData, currentUser, transaction) {
+    return await FileMovement.create(
+      {
+        file_id: file.id,
+        sent_by: currentUser.id,
+        sent_by_designation_id: currentUser.designation_id,
+        sent_by_department_id: currentUser.department_id,
+        sent_to: moveData.receiverId,
+        action: moveData.action,
+        remarks: moveData.remarks,
+        is_read: false,
+        signature_snapshot: currentUser.signature_url,
+      },
+      { transaction },
+    );
+  }
+
+  async _uploadAttachmentsToStorage(attachments, fileId) {
+    const uploadDestinationPath = `files/file-${fileId}/attachments`;
+
+    const uploaded = await Promise.all(
+      attachments.map(async (attachment) => {
+        const attachmentExtension =
+          path.extname(attachment.originalname || "") || ".pdf";
+        const originalName =
+          attachment.originalname || `attachment${attachmentExtension}`;
+
+        const objectKey = attachment?.path
+          ? await storageService.uploadFileToMinIO(
+              attachment,
+              uploadDestinationPath,
+            )
+          : null;
+
+        if (!objectKey) {
+          throw new AppError(
+            "Attachment upload failed: missing uploaded file path.",
+            500,
+          );
+        }
+
+        return {
+          original_name: originalName,
+          file_key: objectKey,
+          file_url: objectKey,
+          mime_type: attachment.mimetype,
+          file_size: attachment.size,
+        };
+      }),
+    );
+
+    return uploaded;
   }
 }
 

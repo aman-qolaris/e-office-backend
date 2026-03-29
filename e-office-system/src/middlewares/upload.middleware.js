@@ -1,56 +1,26 @@
 import multer from "multer";
 import path from "path";
 import crypto from "crypto";
-import multerS3 from "multer-s3";
-import { BUCKET_NAME } from "../config/minio.js";
-import { s3Client } from "../config/s3.js";
+import fs from "fs";
+import { fileTypeFromFile } from "file-type";
+import AppError from "../utils/AppError.js";
 
-const buildDeptCode = (req) => {
-  const deptName = req?.user?.department?.name;
-  if (typeof deptName === "string" && deptName.trim().length >= 3) {
-    return deptName.trim().substring(0, 3).toUpperCase();
-  }
+const tmpUploadsDir = path.join(process.cwd(), "tmp_uploads");
+fs.mkdirSync(tmpUploadsDir, { recursive: true });
 
-  const deptId = req?.user?.department_id;
-  if (deptId !== undefined && deptId !== null) {
-    return `D${deptId}`;
-  }
-
-  return "GEN";
+const buildTempFilename = (file) => {
+  const ext = path.extname(file.originalname || "");
+  const uniqueSuffix = crypto.randomBytes(16).toString("hex");
+  return `${file.fieldname}-${Date.now()}-${uniqueSuffix}${ext}`;
 };
 
-const uniqueSuffix = () => `${Date.now()}-${crypto.randomInt(1000, 10000)}`;
-
-const pdfStorage = multerS3({
-  s3: s3Client,
-  bucket: BUCKET_NAME,
-  contentType: multerS3.AUTO_CONTENT_TYPE,
-  key: (req, file, cb) => {
-    try {
-      const ext = path.extname(file.originalname) || ".pdf";
-      const year = new Date().getFullYear();
-      const deptCode = buildDeptCode(req);
-      const fileId = req?.params?.id;
-      const fileSegment = fileId ? `file-${fileId}` : "misc";
-
-      cb(
-        null,
-        `files/${year}/${deptCode}/${fileSegment}/attachments/${uniqueSuffix()}${ext}`,
-      );
-    } catch (err) {
-      cb(err);
-    }
+const diskStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, tmpUploadsDir);
   },
-});
-
-const signatureStorage = multerS3({
-  s3: s3Client,
-  bucket: BUCKET_NAME,
-  contentType: multerS3.AUTO_CONTENT_TYPE,
-  key: (req, file, cb) => {
+  filename: (req, file, cb) => {
     try {
-      const ext = path.extname(file.originalname) || ".png";
-      cb(null, `signatures/users/${uniqueSuffix()}${ext}`);
+      cb(null, buildTempFilename(file));
     } catch (err) {
       cb(err);
     }
@@ -59,41 +29,94 @@ const signatureStorage = multerS3({
 
 // 3. Filter: Only allow PDFs for E-files
 const pdfFilter = (req, file, cb) => {
-  if (file.mimetype === "application/pdf") {
-    cb(null, true);
-  } else {
-    cb(new Error("Invalid file type. Only PDF files are allowed!"), false);
-  }
+  // Do not trust client-provided mimetype; validate via magic numbers after upload.
+  cb(null, true);
 };
 
 // 4. Configure Multer for PDFs
 export const upload = multer({
-  storage: pdfStorage,
+  storage: diskStorage,
   limits: { fileSize: 10 * 1024 * 1024 }, // Limit: 10MB
   fileFilter: pdfFilter,
 });
 
 // 5. Filter: Only allow JPG/PNG for Signatures
 const signatureFilter = (req, file, cb) => {
-  if (
-    file.mimetype === "image/jpeg" ||
-    file.mimetype === "image/png" ||
-    file.mimetype === "image/jpg"
-  ) {
-    cb(null, true);
-  } else {
-    cb(
-      new Error(
-        "Invalid file type. Only JPG/PNG images are allowed for signatures!",
-      ),
-      false,
-    );
-  }
+  // Do not trust client-provided mimetype; validate via magic numbers after upload.
+  cb(null, true);
 };
 
 // 6. Configure Multer for Signatures
 export const uploadSignature = multer({
-  storage: signatureStorage,
+  storage: diskStorage,
   limits: { fileSize: 100 * 1024 }, // Max 100KB
   fileFilter: signatureFilter,
 });
+
+const safeUnlink = (filePath) => {
+  try {
+    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch {
+    // best-effort cleanup
+  }
+};
+
+export const validatePdfUploads = async (req, res, next) => {
+  try {
+    const files = Array.isArray(req.files)
+      ? req.files
+      : req.file
+        ? [req.file]
+        : [];
+
+    for (const file of files) {
+      if (!file?.path) continue;
+      const type = await fileTypeFromFile(file.path);
+      if (!type || type.mime !== "application/pdf") {
+        for (const f of files) safeUnlink(f?.path);
+        return next(
+          new AppError(
+            "Invalid file signature. Only actual PDFs are allowed.",
+            400,
+          ),
+        );
+      }
+    }
+
+    next();
+  } catch (err) {
+    // On unexpected errors, cleanup temp files.
+    const files = Array.isArray(req.files)
+      ? req.files
+      : req.file
+        ? [req.file]
+        : [];
+    for (const file of files) safeUnlink(file?.path);
+    next(err);
+  }
+};
+
+export const validateSignatureUpload = async (req, res, next) => {
+  try {
+    const file = req.file;
+    if (!file?.path) return next();
+
+    const type = await fileTypeFromFile(file.path);
+    const allowedMimes = new Set(["image/jpeg", "image/png"]);
+
+    if (!type || !allowedMimes.has(type.mime)) {
+      safeUnlink(file.path);
+      return next(
+        new AppError(
+          "Invalid file signature. Only actual PNG/JPEG images are allowed.",
+          400,
+        ),
+      );
+    }
+
+    next();
+  } catch (err) {
+    safeUnlink(req.file?.path);
+    next(err);
+  }
+};

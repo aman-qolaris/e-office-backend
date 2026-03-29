@@ -1,5 +1,3 @@
-import path from "path";
-import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
 import {
   sequelize,
   User,
@@ -11,6 +9,7 @@ import UserResponseDto from "../dtos/response/UserResponseDto.js";
 import AppError from "../../../utils/AppError.js";
 import { DESIGNATIONS, ROLES } from "../../../config/constants.js";
 import redisClient from "../../../config/redis.js";
+import storageService from "../../storage/storage.service.js";
 
 class UserService {
   async createUser(data, signatureFile) {
@@ -51,17 +50,23 @@ class UserService {
       if (signatureFile.key) {
         signatureUrl = signatureFile.key;
       } else {
-        // Backward compatibility: if some caller still provides a local file.
-        const ext = path.extname(signatureFile.originalname);
-        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e4)}`;
-        const objectName = `signatures/users/${uniqueSuffix}${ext}`;
-        await minioClient.putObject(
-          BUCKET_NAME,
-          objectName,
-          signatureFile.buffer,
-          signatureFile.size,
-        );
-        signatureUrl = objectName;
+        // Backward compatibility: if some caller still provides a local file or buffer.
+        if (signatureFile.path) {
+          signatureUrl = await storageService.uploadFileToMinIO(
+            signatureFile,
+            "signatures/users",
+          );
+        } else if (signatureFile.buffer) {
+          signatureUrl = await storageService.uploadBufferToMinIO(
+            signatureFile,
+            "signatures/users",
+          );
+        } else {
+          throw new AppError(
+            "Signature upload failed: unsupported file payload.",
+            500,
+          );
+        }
       }
     }
 
@@ -86,9 +91,19 @@ class UserService {
     return new UserResponseDto(newUser);
   }
 
-  async updateUser(userId, data) {
+  async updateUser(currentUser, userId, data) {
     const transaction = await sequelize.transaction();
     try {
+      // Defense in depth: protect admin elevation at the service layer
+      if (data.systemRole === ROLES.ADMIN) {
+        if (!currentUser || currentUser.system_role !== ROLES.ADMIN) {
+          throw new AppError(
+            "CRITICAL: Unauthorized attempt to grant Admin privileges.",
+            403,
+          );
+        }
+      }
+
       const user = await User.findByPk(userId);
       if (!user) {
         throw new AppError("User not found", 404);
@@ -98,18 +113,7 @@ class UserService {
       // 1. ADMIN ROLE SWAP (Presidential Power)
       // =========================================================
       // If setting a NEW Admin, demote the OLD Admin to Staff.
-      if (data.systemRole === ROLES.ADMIN && user.system_role !== ROLES.ADMIN) {
-        const currentAdmin = await User.findOne({
-          where: { system_role: ROLES.ADMIN, is_active: true },
-          transaction,
-        });
-
-        if (currentAdmin) {
-          // Demote existing admin to STAFF so we maintain "Single Admin" rule
-          currentAdmin.system_role = ROLES.STAFF;
-          await currentAdmin.save({ transaction });
-        }
-      }
+      await this._handleAdminRoleSwap(user, data, transaction);
 
       // ---------------------------------------------------------
       // 2. DESIGNATION & SEAT SWAP LOGIC
@@ -118,49 +122,18 @@ class UserService {
 
       // Check if designation is changing
       if (data.designationId && data.designationId !== user.designation_id) {
-        // A. Validate & Fetch New Designation (Once)
         newDesignation = await Designation.findByPk(data.designationId, {
           transaction,
         });
         if (!newDesignation) throw new AppError("Designation not found", 404);
 
-        // B. Identify the Target Seat (Department)
-        const targetDeptId = data.departmentId || user.department_id;
-
-        // C. Skip Seat Check for "Multi-User" Roles (Member, Clerk)
-        const multiUserDesignations = [DESIGNATIONS.MEMBER, DESIGNATIONS.CLERK];
-
-        if (!multiUserDesignations.includes(newDesignation.name)) {
-          // D. Find if someone else currently holds this seat
-          const existingHolder = await User.findOne({
-            where: {
-              designation_id: newDesignation.id,
-              department_id: targetDeptId,
-              id: { [Op.ne]: userId }, // Not the current user
-              is_active: true,
-            },
-            transaction,
-          });
-
-          // E. Auto-Demote the existing holder to "MEMBER"
-          if (existingHolder) {
-            const memberDesignation = await Designation.findOne({
-              where: { name: DESIGNATIONS.MEMBER },
-              transaction,
-            });
-
-            if (!memberDesignation) {
-              throw new AppError(
-                "System Error: 'MEMBER' designation not found. Cannot auto-demote.",
-                500,
-              );
-            }
-
-            existingHolder.designation_id = memberDesignation.id;
-            // Note: We keep their Role & Department same, just strip the title.
-            await existingHolder.save({ transaction });
-          }
-        }
+        const targetDepartmentId = data.departmentId || user.department_id;
+        await this._handleSeatReallocation(
+          userId,
+          newDesignation,
+          targetDepartmentId,
+          transaction,
+        );
       }
       // Validation: If designation ID provided but NOT changing, just verify it exists
       else if (data.designationId) {
@@ -175,17 +148,10 @@ class UserService {
         data.designationId && data.designationId !== user.designation_id;
 
       if (data.departmentId) {
-        const dept = await Department.findByPk(data.departmentId, {
+        const department = await Department.findByPk(data.departmentId, {
           transaction,
         });
-        if (!dept) throw new AppError("Department not found", 404);
-      }
-
-      if (data.designationId && !isDesignationChanging) {
-        const desig = await Designation.findByPk(data.designationId, {
-          transaction,
-        });
-        if (!desig) throw new AppError("Designation not found", 404);
+        if (!department) throw new AppError("Department not found", 404);
       }
 
       if (data.email && data.email !== user.email) {
@@ -235,21 +201,85 @@ class UserService {
     }
   }
 
-  async getAllUsers(currentUserId, searchQuery = null) {
+  async _handleAdminRoleSwap(user, data, transaction) {
+    if (data.systemRole !== ROLES.ADMIN || user.system_role === ROLES.ADMIN) {
+      return;
+    }
+
+    const currentAdmin = await User.findOne({
+      where: { system_role: ROLES.ADMIN, is_active: true },
+      transaction,
+    });
+
+    if (!currentAdmin) return;
+
+    currentAdmin.system_role = ROLES.STAFF;
+    await currentAdmin.save({ transaction });
+  }
+
+  async _handleSeatReallocation(
+    userId,
+    newDesignation,
+    targetDepartmentId,
+    transaction,
+  ) {
+    const multiUserDesignations = [DESIGNATIONS.MEMBER, DESIGNATIONS.CLERK];
+    if (multiUserDesignations.includes(newDesignation.name)) return;
+
+    const existingHolder = await User.findOne({
+      where: {
+        designation_id: newDesignation.id,
+        department_id: targetDepartmentId,
+        id: { [Op.ne]: userId },
+        is_active: true,
+      },
+      transaction,
+    });
+
+    if (!existingHolder) return;
+
+    const memberDesignation = await Designation.findOne({
+      where: { name: DESIGNATIONS.MEMBER },
+      transaction,
+    });
+
+    if (!memberDesignation) {
+      throw new AppError(
+        "System Error: 'MEMBER' designation not found. Cannot auto-demote.",
+        500,
+      );
+    }
+
+    existingHolder.designation_id = memberDesignation.id;
+    await existingHolder.save({ transaction });
+  }
+
+  async getAllUsers(currentUserId, searchQuery = null, page = 1, limit = 50) {
+    const pageNum = Number.isFinite(Number(page)) ? parseInt(page) : 1;
+    const limitNum = Number.isFinite(Number(limit)) ? parseInt(limit) : 50;
+    const safePage = pageNum > 0 ? pageNum : 1;
+    const safeLimit = Math.min(Math.max(limitNum, 1), 100);
+    const offset = (safePage - 1) * safeLimit;
+
     const whereClause = {
       id: { [Op.ne]: currentUserId },
       is_active: true,
     };
 
-    if (searchQuery) {
+    const q = typeof searchQuery === "string" ? searchQuery.trim() : "";
+    if (q) {
       whereClause[Op.or] = [
-        { full_name: { [Op.like]: `%${searchQuery}%` } },
-        { "$designation.name$": { [Op.like]: `%${searchQuery}%` } },
+        // Prefix search allows DB index usage (no leading wildcard)
+        { full_name: { [Op.like]: `${q}%` } },
+        { "$designation.name$": { [Op.like]: `${q}%` } },
       ];
     }
 
-    const users = await User.findAll({
+    const { rows: users, count: total } = await User.findAndCountAll({
       where: whereClause,
+      limit: safeLimit,
+      offset,
+      distinct: true,
       attributes: ["id", "full_name", "email", "system_role", "is_active"],
       include: [
         {
@@ -267,7 +297,13 @@ class UserService {
       subQuery: false,
     });
 
-    return users;
+    return {
+      data: users,
+      total,
+      page: safePage,
+      limit: safeLimit,
+      totalPages: Math.ceil(total / safeLimit),
+    };
   }
 
   async getAllDepartments() {

@@ -5,6 +5,7 @@ import CreateDepartmentRequestDto from "../dtos/request/CreateDepartmentRequestD
 import CreateDesignationRequestDto from "../dtos/request/CreateDesignationRequestDto.js";
 import AppError from "../../../utils/AppError.js";
 import { minioClient, BUCKET_NAME } from "../../../config/minio.js";
+import fs from "fs";
 
 class UserController {
   async createUser(req, res, next) {
@@ -20,6 +21,14 @@ class UserController {
           if (signatureFile.key) {
             try {
               await minioClient.removeObject(BUCKET_NAME, signatureFile.key);
+            } catch {
+              // Best-effort cleanup
+            }
+          }
+          // Cleanup temp disk file (disk storage)
+          if (signatureFile.path && fs.existsSync(signatureFile.path)) {
+            try {
+              fs.unlinkSync(signatureFile.path);
             } catch {
               // Best-effort cleanup
             }
@@ -48,6 +57,13 @@ class UserController {
           // Best-effort cleanup
         }
       }
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch {
+          // Best-effort cleanup
+        }
+      }
       next(error);
     }
   }
@@ -60,7 +76,11 @@ class UserController {
       const updateData = UpdateUserRequestDto.validate(req.body);
 
       // 2. Call Service
-      const updatedUser = await UserService.updateUser(id, updateData);
+      const updatedUser = await UserService.updateUser(
+        req.user,
+        id,
+        updateData,
+      );
 
       // 3. Send Response
       res.status(200).json({
@@ -76,15 +96,20 @@ class UserController {
   async getAllUsers(req, res, next) {
     try {
       // Pass the current user's ID so we can exclude them from the list
-      const users = await UserService.getAllUsers(
+      const result = await UserService.getAllUsers(
         req.user.id,
         req.query.search,
+        req.query.page,
+        req.query.limit,
       );
 
       res.status(200).json({
         success: true,
-        count: users.length,
-        data: users,
+        count: result.data.length,
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        data: result.data,
       });
     } catch (error) {
       next(error);

@@ -4,6 +4,7 @@ import app from "./src/app.js"; // Note the .js extension is mandatory in ESM
 import { sequelize } from "./src/database/models/index.js"; // Will enable later
 import { initMinio } from "./src/config/minio.js";
 import { initSocket } from "./src/config/socket.js";
+import "./src/modules/workflow/events/workflow.socket.listener.js";
 
 const PORT = process.env.PORT || 4000;
 

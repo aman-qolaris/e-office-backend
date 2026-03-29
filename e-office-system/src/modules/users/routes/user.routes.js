@@ -4,7 +4,10 @@ import { protect } from "../../../middlewares/auth.middleware.js";
 import { restrictTo } from "../../../middlewares/rbac.middleware.js";
 import { DESIGNATIONS, ROLES } from "../../../config/constants.js";
 import AppError from "../../../utils/AppError.js";
-import { uploadSignature } from "../../../middlewares/upload.middleware.js";
+import {
+  uploadSignature,
+  validateSignatureUpload,
+} from "../../../middlewares/upload.middleware.js";
 const router = Router();
 
 // Apply Global Protection (Must be logged in)
@@ -223,6 +226,7 @@ router.post(
   "/",
   restrictTo(ROLES.ADMIN),
   uploadSignature.single("signature"),
+  validateSignatureUpload,
   UserController.createUser,
 );
 

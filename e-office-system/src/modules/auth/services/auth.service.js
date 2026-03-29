@@ -45,6 +45,28 @@ class AuthService {
     return new AuthResponseDto(user, token);
   }
 
+  async logout(token) {
+    if (!token || token === "loggedout") return;
+
+    const MAX_TTL = 7 * 24 * 60 * 60; // 7 days (seconds)
+
+    let decoded;
+    try {
+      // Verify signature; if invalid/expired, do not write anything to Redis.
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch {
+      return;
+    }
+
+    if (!decoded?.exp) return;
+
+    let timeToLive = decoded.exp - Math.floor(Date.now() / 1000);
+    timeToLive = Math.min(timeToLive, MAX_TTL);
+    if (timeToLive <= 0) return;
+
+    await redisClient.setEx(`blacklist:${token}`, timeToLive, "true");
+  }
+
   async changePassword(userId, { currentPassword, newPassword }) {
     const user = await User.findByPk(userId);
     if (!user) throw new AppError("User not found", 404);
