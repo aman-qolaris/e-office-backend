@@ -7,6 +7,9 @@ const seedDesignations = async () => {
     console.log("🌱 Starting Designation Seeder...");
     await sequelize.authenticate();
 
+    // Ensure tables exist when running seeders standalone (fresh DB)
+    await sequelize.sync({ alter: true });
+
     // 1. Define the Mapping Logic (100, 50, 10)
     const levelMapping = {
       [DESIGNATIONS.PRESIDENT]: 100,

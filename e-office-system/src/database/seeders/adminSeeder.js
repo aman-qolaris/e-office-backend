@@ -1,7 +1,7 @@
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
-import { sequelize, User, Designation } from "../models/index.js"; // Import Designation
+import { sequelize, User, Designation, Department } from "../models/index.js"; // Import Department
 import { ROLES, DESIGNATIONS } from "../../config/constants.js";
 import { minioClient, BUCKET_NAME } from "../../config/minio.js";
 
@@ -9,6 +9,9 @@ const seedAdmin = async () => {
   try {
     console.log("🌱 Starting Admin Seeder...");
     await sequelize.authenticate();
+
+    // Ensure tables exist when running seeders standalone (fresh DB)
+    await sequelize.sync({ alter: true });
 
     // 1. Check if Admin exists
     const existingAdmin = await User.findOne({
@@ -33,6 +36,17 @@ const seedAdmin = async () => {
       process.exit(1);
     }
 
+    const adminDepartment = await Department.findOne({
+      where: { name: "Maharashtra Mandal" },
+    });
+
+    if (!adminDepartment) {
+      console.error(
+        "❌ Error: 'Maharashtra Mandal' department not found in DB. Run departmentSeeder first!",
+      );
+      process.exit(1);
+    }
+
     const signaturePath = path.join(
       process.cwd(),
       "src",
@@ -44,7 +58,7 @@ const seedAdmin = async () => {
     let signatureUrl = null;
 
     if (fs.existsSync(signaturePath)) {
-      console.log("📄 Found admin-signature.png. Uploading to MinIO...");
+      console.log("📄 Found admin signature. Uploading to MinIO...");
       const ext = path.extname(signaturePath);
       const uniqueSuffix = `admin-${Date.now()}`;
       const objectName = `signatures/users/${uniqueSuffix}${ext}`;
@@ -71,21 +85,27 @@ const seedAdmin = async () => {
       }
     } else {
       console.log(
-        "⚠️ No signature found at src/database/seeders/assets/admin-signature.png. Admin will be created without a signature.",
+        "⚠️ No signature found at src/database/seeders/assets/admin-signature.jpeg. Admin will be created without a signature.",
       );
     }
 
     // 3. Create Admin
+    const adminFullName = process.env.ADMIN_FULL_NAME;
+    const adminPhone = process.env.ADMIN_PHONE;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const adminEmail = process.env.ADMIN_EMAIL || null;
+
     const adminData = {
-      full_name: "System Administrator",
-      phone_number: "9876543210",
-      password: "Admin@123",
+      full_name: adminFullName,
+      phone_number: adminPhone,
+      email: adminEmail,
+      password: adminPassword,
       system_role: ROLES.ADMIN,
 
       // ⚠️ CHANGED: Use the ID we found, not the string
       designation_id: adminDesignation.id,
 
-      department_id: 1, // Ensure you have a department with ID 1 (e.g. General Administration)
+      department_id: adminDepartment.id,
       signature_url: signatureUrl,
       is_active: true,
     };

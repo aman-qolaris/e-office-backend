@@ -266,6 +266,6 @@ router.post("/change-password", protect, AuthController.changePassword);
  *       "401":
  *         description: Invalid password provided
  */
-router.post("/set-pin", protect, AuthController.setPin);
+router.post("/set-pin", authLimiter, protect, AuthController.setPin);
 
 export default router;

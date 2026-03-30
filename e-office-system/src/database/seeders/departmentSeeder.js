@@ -6,6 +6,9 @@ const seedDepartments = async () => {
     console.log("🌱 Starting Department Seeder...");
     await sequelize.authenticate();
 
+    // Ensure tables exist when running seeders standalone (fresh DB)
+    await sequelize.sync({ alter: true });
+
     const departments = [
       { name: "Maharashtra Mandal", description: "Central Organization / HQ" },
       {

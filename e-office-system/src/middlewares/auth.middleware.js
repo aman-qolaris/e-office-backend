@@ -42,7 +42,25 @@ export const protect = async (req, res, next) => {
 
     if (cachedUser) {
       // Lightning fast! Parse the string back into a JavaScript object
-      currentUser = JSON.parse(cachedUser);
+      // Then re-hydrate it into Sequelize model instances so downstream code
+      // can safely call instance methods (e.g. validatePassword/save/reload).
+      const parsed = JSON.parse(cachedUser);
+
+      currentUser = User.build(parsed, {
+        isNewRecord: false,
+      });
+
+      if (parsed?.designation) {
+        currentUser.designation = Designation.build(parsed.designation, {
+          isNewRecord: false,
+        });
+      }
+
+      if (parsed?.department) {
+        currentUser.department = Department.build(parsed.department, {
+          isNewRecord: false,
+        });
+      }
     } else {
       // B. If not in cache, fetch from MySQL
       currentUser = await User.findByPk(decoded.id, {
