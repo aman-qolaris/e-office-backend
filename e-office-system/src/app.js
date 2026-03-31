@@ -40,25 +40,18 @@ app.get("/health", (req, res) => {
 app.use("/api/v1", routes);
 
 // 3. Global Error Handler
+// 3. Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-if (err.name === "MulterError") {
+
+  if (err.name === "MulterError") {
     return res.status(400).json({
       success: false,
-      // Provide a clean message for the frontend toast to display
       message: err.code === "LIMIT_FILE_SIZE" ? "File is too large. Max size is 100KB." : err.message,
     });
   }
-  // 1. Handle Joi Validation Errors (400 Bad Request)
-  if (err.message.includes("must be") || err.message.includes("required")) {
-    return res.status(400).json({
-      success: false,
-      message: "Validation Error",
-      error: err.message,
-    });
-  }
 
-  // 2. Handle Custom AppErrors (401, 403, 404, etc.)
+  // Handle Custom AppErrors FIRST (401, 403, 404, etc.)
   if (err.isOperational) {
     return res.status(err.statusCode).json({
       success: false,
@@ -66,7 +59,16 @@ if (err.name === "MulterError") {
     });
   }
 
-  // 3. Handle Unknown Server Crashes (500)
+  // Handle Joi Validation Errors safely
+  // (Assuming Joi errors have isJoi = true or name = 'ValidationError')
+  if (err.isJoi || err.name === 'ValidationError' || err.message.includes("must be") || err.message.includes("required")) {
+    return res.status(400).json({
+      success: false,
+      message: err.message, // Use the actual validation message instead of generic "Validation Error"
+    });
+  }
+
+  // Handle Unknown Server Crashes (500)
   res.status(500).json({
     success: false,
     message: "Internal Server Error",
