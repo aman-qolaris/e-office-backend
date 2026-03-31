@@ -280,17 +280,17 @@ class UserService {
       limit: safeLimit,
       offset,
       distinct: true,
-      attributes: ["id", "full_name", "email", "system_role", "is_active"],
+      attributes: ["id", "full_name","phone_number", "email", "system_role", "is_active"],
       include: [
         {
           model: Designation,
           as: "designation",
-          attributes: ["name"],
+          attributes: ["id","name"],
         },
         {
           model: Department,
           as: "department",
-          attributes: ["name"],
+          attributes: ["id","name"],
         },
       ],
       order: [["full_name", "ASC"]],
