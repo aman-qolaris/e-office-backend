@@ -4,6 +4,7 @@ import ChangePasswordRequestDto from "../dtos/request/ChangePasswordRequestDto.j
 import SetPinRequestDto from "../dtos/request/SetPinRequestDto.js";
 import ForgotPasswordRequestDto from "../dtos/request/ForgotPasswordRequestDto.js";
 import ResetPasswordRequestDto from "../dtos/request/ResetPasswordRequestDto.js";
+import UserResponseDto from "../../users/dtos/response/UserResponseDto.js"; 
 
 class AuthController {
   async login(req, res, next) {
@@ -26,6 +27,7 @@ class AuthController {
         success: true,
         message: "Login successful",
         data: userData,
+        token: token
       });
     } catch (error) {
       next(error);
@@ -122,6 +124,22 @@ class AuthController {
       next(error);
     }
   }
+
+
+  async getMe(req, res, next) {
+  try {
+    // req.user is already attached by the 'protect' middleware
+    const userData = new UserResponseDto(req.user); 
+
+    res.status(200).json({
+      success: true,
+      message: "Current user fetched successfully",
+      data: userData,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 }
 
 export default new AuthController();

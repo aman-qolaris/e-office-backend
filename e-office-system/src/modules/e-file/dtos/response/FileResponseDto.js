@@ -37,8 +37,10 @@ class FileResponseDto {
 
     if (file.currentHolder) {
       this.currentHolder = file.currentHolder.full_name;
+      this.currentHolderId = file.current_holder_id;
     } else {
-      this.currentHolder = "Pending Assignment"; // Handle null user
+      this.currentHolder = "Pending Assignment";
+      this.currentHolderId = null; // Handle null user
     }
 
     // NEW: Show Current Position
