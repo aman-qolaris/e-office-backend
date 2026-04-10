@@ -10,7 +10,7 @@ import swaggerUi from "swagger-ui-express";
 import swaggerSpecs from "./config/swagger.js";
 
 const app = express();
-
+app.set("trust proxy", 1);
 // 1. Global Middlewares
 app.use(helmet()); // Security Headers
 app.use(

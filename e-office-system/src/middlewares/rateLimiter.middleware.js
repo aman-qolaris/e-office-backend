@@ -5,7 +5,7 @@ import redisClient from "../config/redis.js";
 // 1. Global API Limiter (Generous limit for normal app usage)
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each IP to 200 requests per `window` (here, per 15 minutes)
+  limit: 200, // Limit each IP to 200 requests per `window` (here, per 15 minutes)
   message: {
     success: false,
     message:
@@ -21,7 +21,8 @@ export const globalLimiter = rateLimit({
 // 2. Strict Auth Limiter (Crucial for Login, OTP, and Password Reset)
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to only 5 failed/success attempts per 15 minutes
+  limit: 5, // Limit each IP to only 5 failed/success attempts per 15 minutes
+  skipSuccessfulRequests: true,
   message: {
     success: false,
     message:

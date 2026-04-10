@@ -268,4 +268,6 @@ router.post("/change-password", protect, AuthController.changePassword);
  */
 router.post("/set-pin", authLimiter, protect, AuthController.setPin);
 
+router.get("/me", protect, AuthController.getMe);
+
 export default router;

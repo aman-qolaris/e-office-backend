@@ -165,7 +165,7 @@ class FileService {
         [Op.and]: [
           {
             [Op.or]: [
-              { status: { [Op.ne]: ["CLOSED"] } },
+              { status: { [Op.ne]: "DRAFT" } },
               { status: { [Op.is]: null } },
             ],
           },
@@ -253,6 +253,8 @@ class FileService {
       throw error;
     }
   }
+
+
   async getOutbox(user, { limit = 10, cursor = null } = {}) {
     const limitNum = parseInt(limit) || 10;
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
